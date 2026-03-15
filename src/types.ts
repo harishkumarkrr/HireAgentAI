@@ -19,6 +19,8 @@ export interface FormResponse {
   answers: Record<string, string>;
   transcript: TranscriptEntry[];
   status: 'started' | 'completed';
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  aiSummary?: string;
   createdAt: any;
   updatedAt?: any;
   deleted?: boolean;

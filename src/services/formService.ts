@@ -214,5 +214,33 @@ export const responseService = {
       handleFirestoreError(error, OperationType.LIST, path);
       return () => {};
     }
+  },
+
+  async getTotalResponsesForForms(formIds: string[]): Promise<number> {
+    if (formIds.length === 0) return 0;
+    
+    const path = 'responses';
+    try {
+      // Firestore 'in' query supports up to 10 items. For simplicity, we'll fetch all if needed,
+      // but since Starter plan has max 3 forms, this is perfectly fine.
+      // If they have more than 10, we'd need to batch. Let's just do a simple query for now.
+      let total = 0;
+      
+      // Batching in chunks of 10
+      for (let i = 0; i < formIds.length; i += 10) {
+        const chunk = formIds.slice(i, i + 10);
+        const q = query(
+          collection(db, path),
+          where('formId', 'in', chunk)
+        );
+        const snapshot = await getDocs(q);
+        total += snapshot.docs.filter(doc => !doc.data().deleted).length;
+      }
+      
+      return total;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return 0;
+    }
   }
 };

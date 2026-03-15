@@ -26,7 +26,12 @@ export function int16ToFloat32(buffer: Int16Array): Float32Array {
  * Base64 encoding for Int16Array
  */
 export function base64EncodeAudio(buffer: Int16Array): string {
-  const binary = String.fromCharCode(...new Uint8Array(buffer.buffer));
+  const bytes = new Uint8Array(buffer.buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
   return btoa(binary);
 }
 

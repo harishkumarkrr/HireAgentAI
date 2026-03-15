@@ -121,7 +121,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+      // Reduced buffer size for lower latency (2048 samples @ 16kHz ~= 128ms)
+      processorRef.current = audioContextRef.current.createScriptProcessor(2048, 1, 1);
       
       // Ensure context is running
       if (audioContextRef.current.state === 'suspended') {
@@ -146,6 +147,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               'en-US': 'English (US)',
               'en-IN': 'English (India)',
               'hi-IN': 'Hindi',
+              'ta-IN': 'Tamil',
               'te-IN': 'Telugu',
               'kn-IN': 'Kannada',
               'ml-IN': 'Malayalam',
@@ -160,14 +162,13 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
           Guidelines:
-          - Start the conversation immediately by greeting the user and asking the first question.
-          - Be professional and warm.
-          - Speak in the specified language.
-          - Ask one question at a time.
-          - Listen to the answer, acknowledge it briefly, and move to the next.
-          - If the user's answer is unclear, politely ask them to repeat or clarify.
-          - Use the 'save_answer' tool to save each answer as you collect it.
-          - Once all questions are answered, thank the user and tell them the form is complete. Then use the 'finish_form' tool.`,
+          - This is a REAL-TIME conversation. Be extremely proactive and snappy.
+          - Start the conversation immediately. Do not wait for the user to speak first.
+          - Ask one question at a time. Move quickly to the next question once you have an answer.
+          - Do NOT ask for clarification unless the input is completely unintelligible.
+          - Assume you heard correctly if the input makes any sense in context.
+          - Use 'save_answer' immediately when you have the information.
+          - Once all questions are answered, thank the user and use 'finish_form' immediately.`,
           tools: [{
             functionDeclarations: [
               {
@@ -197,11 +198,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             setIsActive(true);
             isActiveRef.current = true; // Set it immediately to be sure
             
-            // Send an initial greeting to trigger the agent to start the conversation
+            // Send a minimal trigger to start the conversation
             sessionPromise.then(session => {
-              console.log("Sending initial greeting to start conversation...");
+              sessionRef.current = session; // Store session for faster access
+              console.log("Sending start trigger...");
               session.sendRealtimeInput({
-                text: "Hello! I am ready to start the form. Please introduce yourself and ask the first question."
+                text: "Please start the form now."
               });
             });
           },
@@ -265,6 +267,51 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                 } else if (fc.name === 'finish_form') {
                   try {
                     await responseService.updateResponse(responseId, { status: 'completed' });
+                    
+                    // Perform AI analysis on the transcript
+                    try {
+                      const currentResponse = await responseService.getResponse(responseId);
+                      if (currentResponse?.transcript && currentResponse.transcript.length > 0) {
+                        const transcriptText = currentResponse.transcript
+                          .map(t => `${t.role === 'user' ? 'Candidate' : 'AI Agent'}: ${t.text}`)
+                          .join('\n');
+                        
+                        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                        
+                        const analysisPrompt = `
+                          Analyze the following interview/form transcript and provide:
+                          1. A sentiment score (one word: Positive, Neutral, or Negative).
+                          2. A concise AI summary of the candidate's responses (max 2 sentences).
+                          
+                          Transcript:
+                          ${transcriptText}
+                          
+                          Return the result in JSON format:
+                          {
+                            "sentiment": "Positive/Neutral/Negative",
+                            "aiSummary": "Summary text here"
+                          }
+                        `;
+                        
+                        const result = await ai.models.generateContent({
+                          model: "gemini-3-flash-preview",
+                          contents: [{ parts: [{ text: analysisPrompt }] }]
+                        });
+                        const responseText = result.text;
+                        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                        
+                        if (jsonMatch) {
+                          const analysis = JSON.parse(jsonMatch[0]);
+                          await responseService.updateResponse(responseId, {
+                            sentiment: analysis.sentiment,
+                            aiSummary: analysis.aiSummary
+                          });
+                        }
+                      }
+                    } catch (analysisErr) {
+                      console.error("AI Analysis failed:", analysisErr);
+                    }
+
                     setIsFinished(true);
                     cleanup();
                     
@@ -300,35 +347,19 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
       let audioSentCount = 0;
       processorRef.current.onaudioprocess = (e) => {
-        if (isActiveRef.current) {
+        if (isActiveRef.current && sessionRef.current) {
           const inputData = e.inputBuffer.getChannelData(0);
-          
-          // Check if there's actual audio signal
-          let hasSignal = false;
-          for (let i = 0; i < inputData.length; i++) {
-            if (Math.abs(inputData[i]) > 0.01) {
-              hasSignal = true;
-              break;
-            }
-          }
-
           const pcmData = float32ToInt16(inputData);
           const base64Data = base64EncodeAudio(pcmData);
           
-          if (audioSentCount % 100 === 0) {
-            console.log("Audio processor running. Sent chunks:", audioSentCount, "Signal detected:", hasSignal);
+          try {
+            sessionRef.current.sendRealtimeInput({
+              media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+            });
+            audioSentCount++;
+          } catch (sendErr) {
+            console.error("Error sending audio:", sendErr);
           }
-          audioSentCount++;
-
-          sessionPromise.then(session => {
-            try {
-              session.sendRealtimeInput({
-                media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-              });
-            } catch (sendErr) {
-              // Ignore errors during transition/closing
-            }
-          });
         }
       };
 
