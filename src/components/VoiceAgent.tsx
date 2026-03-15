@@ -34,6 +34,15 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
     console.log("VoiceAgent state - isActive:", isActive, "isConnecting:", isConnecting, "isFinished:", isFinished);
   }, [isActive, isConnecting, isFinished]);
 
+  useEffect(() => {
+    if (isFinished) {
+      const timer = setTimeout(() => {
+        onComplete();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isFinished, onComplete]);
+
   const cleanup = useCallback(() => {
     isActiveRef.current = false;
     if (sessionRef.current) {
@@ -391,6 +400,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
         <div className="space-y-2">
           <h2 className="text-3xl font-bold text-gray-900">Thank You!</h2>
           <p className="text-gray-500">Your responses have been recorded successfully.</p>
+          <p className="text-sm text-gray-400 mt-4">Redirecting to home in 5 seconds...</p>
         </div>
         <button
           onClick={onComplete}
@@ -462,7 +472,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           <button
             onClick={() => {
               cleanup();
-              onComplete();
+              setIsFinished(true);
             }}
             className="flex items-center gap-2 px-8 py-4 bg-red-500 hover:bg-red-600 text-white rounded-full font-semibold shadow-lg shadow-red-200 transition-all active:scale-95"
           >

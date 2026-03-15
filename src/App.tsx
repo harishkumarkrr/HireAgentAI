@@ -140,6 +140,15 @@ function AppContent() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+      
+      const params = new URLSearchParams(window.location.search);
+      const formId = params.get('f');
+      
+      if (u && !formId) {
+        setView('dashboard');
+      } else if (!u && !formId) {
+        setView('home');
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -442,6 +451,29 @@ function AppContent() {
     document.body.removeChild(link);
   };
 
+  const exportToJSON = () => {
+    if (!selectedForm || responses.length === 0) return;
+    
+    const data = {
+      formTitle: selectedForm.title,
+      generatedOn: new Date().toISOString(),
+      responses: responses.map(r => ({
+        respondentName: r.respondentName,
+        respondentEmail: r.respondentEmail,
+        date: r.createdAt?.toDate?.()?.toISOString() || null,
+        answers: r.answers
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `${selectedForm.title}_responses.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleStartResponding = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedForm || !respondentInfo.name || !respondentInfo.email) return;
@@ -469,6 +501,35 @@ function AppContent() {
       </div>
     );
   }
+
+  const handlePayment = () => {
+    const isIndia = Intl.DateTimeFormat().resolvedOptions().timeZone.includes('Asia/Calcutta') || Intl.DateTimeFormat().resolvedOptions().timeZone.includes('Asia/Kolkata');
+    
+    if (isIndia) {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => {
+        const options = {
+          key: 'rzp_test_dummy_key', // Mock test key
+          amount: '99900', // 999 INR in paise
+          currency: 'INR',
+          name: 'AI Studio Forms',
+          description: 'Professional Plan Subscription',
+          handler: function (response: any) {
+            alert('Payment successful! Payment ID: ' + response.razorpay_payment_id);
+          },
+          theme: {
+            color: '#059669' // emerald-600
+          }
+        };
+        const rzp1 = new (window as any).Razorpay(options);
+        rzp1.open();
+      };
+      document.body.appendChild(script);
+    } else {
+      alert("Redirecting to Stripe for international payment ($29/mo)...");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans">
@@ -628,7 +689,7 @@ function AppContent() {
                       name: "Professional", 
                       price: Intl.DateTimeFormat().resolvedOptions().timeZone.includes('Asia/Calcutta') || Intl.DateTimeFormat().resolvedOptions().timeZone.includes('Asia/Kolkata') ? "₹999" : "$29", 
                       features: ["Unlimited Agents", "1,000 Responses/mo", "AI Sentiment Analysis", "Premium Voices", "Custom Branding"],
-                      button: "Start Free Trial",
+                      button: "Upgrade Now",
                       popular: true
                     }
                   ].map((plan, i) => (
@@ -653,7 +714,10 @@ function AppContent() {
                           </li>
                         ))}
                       </ul>
-                      <button className={`w-full py-4 rounded-xl font-bold transition-all ${plan.popular ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-100' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}>
+                      <button 
+                        onClick={() => plan.name === "Starter" ? (!user ? setShowAuthModal(true) : setView('dashboard')) : handlePayment()}
+                        className={`w-full py-4 rounded-xl font-bold transition-all ${plan.popular ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-100' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}
+                      >
                         {plan.button}
                       </button>
                     </div>
@@ -1166,11 +1230,19 @@ function AppContent() {
                     </button>
                     <button 
                       onClick={exportToTXT}
-                      className="p-3 hover:bg-gray-50 text-gray-600 flex items-center gap-2 text-sm font-semibold"
+                      className="p-3 hover:bg-gray-50 text-gray-600 border-r border-gray-100 flex items-center gap-2 text-sm font-semibold"
                       title="Export TXT"
                     >
                       <FileJson className="w-4 h-4 text-blue-500" />
                       TXT
+                    </button>
+                    <button 
+                      onClick={exportToJSON}
+                      className="p-3 hover:bg-gray-50 text-gray-600 flex items-center gap-2 text-sm font-semibold"
+                      title="Export JSON"
+                    >
+                      <FileJson className="w-4 h-4 text-yellow-500" />
+                      JSON
                     </button>
                   </div>
                   <button 
