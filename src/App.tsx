@@ -208,7 +208,7 @@ function AppContent() {
     setIsTestingVoice(true);
     
     try {
-      const apiKey = process.env.GEMINI_API_KEY || (process.env as any).API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || (process.env as any).API_KEY;
       if (!apiKey) {
         setToast({ message: "API Key missing. Cannot test voice.", type: 'error' });
         return;

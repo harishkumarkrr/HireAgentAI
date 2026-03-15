@@ -98,7 +98,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
         }
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || (process.env as any).API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || (process.env as any).API_KEY;
       console.log("API Key present:", !!apiKey);
       
       if (!apiKey) {
