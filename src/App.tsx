@@ -615,7 +615,7 @@ function AppContent() {
             >
               <div className="space-y-4">
                 <h1 className="text-6xl font-extrabold tracking-tight text-gray-900 leading-tight">
-                  Google Forms, but <span className="text-emerald-600">Voice-Based</span>.
+                  Turn Forms into <span className="text-emerald-600">Conversations</span>.
                 </h1>
                 <p className="text-xl text-gray-500 max-w-2xl mx-auto">
                   Create conversational agents that collect data through natural voice interaction. No app install, multilingual, and accessible to everyone.
@@ -650,22 +650,34 @@ function AppContent() {
                 </button>
               </div>
 
-              {/* Trust Section */}
-              <div className="pt-20 space-y-8">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-[0.3em]">Trusted by forward-thinking teams</p>
-                <div className="flex flex-wrap justify-center items-center gap-12 grayscale opacity-50">
-                  <div className="flex items-center gap-2 font-bold text-2xl">
-                    <Zap className="w-8 h-8 text-emerald-600" />
-                    FastCo
+              {/* Features Section */}
+              <div className="pt-32 grid grid-cols-1 md:grid-cols-3 gap-12 text-left">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
+                    <MessageSquare className="w-6 h-6" />
                   </div>
-                  <div className="flex items-center gap-2 font-bold text-2xl">
-                    <Target className="w-8 h-8 text-emerald-600" />
-                    AimHigh
+                  <h3 className="text-xl font-bold">Natural Conversations</h3>
+                  <p className="text-gray-500 leading-relaxed">
+                    Ditch the static forms. Let your users answer questions through a fluid, voice-driven conversation that feels completely natural.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
+                    <BrainCircuit className="w-6 h-6" />
                   </div>
-                  <div className="flex items-center gap-2 font-bold text-2xl">
-                    <Globe className="w-8 h-8 text-emerald-600" />
-                    GlobalX
+                  <h3 className="text-xl font-bold">Smart Extraction</h3>
+                  <p className="text-gray-500 leading-relaxed">
+                    Our AI automatically understands context, extracts the exact data points you need, and organizes them perfectly into structured formats.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
+                    <BarChart3 className="w-6 h-6" />
                   </div>
+                  <h3 className="text-xl font-bold">Instant Insights</h3>
+                  <p className="text-gray-500 leading-relaxed">
+                    View responses in real-time. Export to CSV, JSON, or PDF instantly, and analyze sentiment and trends without manual data entry.
+                  </p>
                 </div>
               </div>
 
