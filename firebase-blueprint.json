@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "Form": {
+      "title": "Form",
+      "description": "A voice-based conversational form created by a user.",
+      "type": "object",
+      "properties": {
+        "creatorId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "questions": { "type": "array", "items": { "type": "string" } },
+        "language": { "type": "string" },
+        "voice": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["creatorId", "title", "questions", "createdAt"]
+    },
+    "FormResponse": {
+      "title": "FormResponse",
+      "description": "A response to a voice form.",
+      "type": "object",
+      "properties": {
+        "formId": { "type": "string" },
+        "respondentName": { "type": "string" },
+        "respondentEmail": { "type": "string" },
+        "answers": { "type": "object" },
+        "transcript": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string" },
+              "text": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "status": { "type": "string", "enum": ["started", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["formId", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "forms": {
+      "schema": "Form",
+      "description": "Collection of conversational forms."
+    },
+    "responses": {
+      "schema": "FormResponse",
+      "description": "Collection of responses to forms."
+    }
+  }
+}

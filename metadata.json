@@ -1,0 +1,5 @@
+{
+  "name": "HireAgent AI",
+  "description": "A conversational 'Google Forms' platform where AI voice agents collect data through natural speech. Multilingual, browser-based, and accessible.",
+  "requestFramePermissions": ["microphone"]
+}
