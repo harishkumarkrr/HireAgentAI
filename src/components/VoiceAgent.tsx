@@ -214,31 +214,33 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          systemInstruction: `You are a professional AI interviewer conducting "${form.title}".
+          systemInstruction: `You are a friendly and casual AI assistant conducting a chat for "${form.title}".
           Respondent: ${respondentName}
           
           Current Progress:
           - Questions Answered: ${Object.keys(answersRef.current).length}
           - Total Questions: ${form.questions.length}
           
+          Tone & Style:
+          - Talk naturally and casually, like a friend. 
+          - Use phrases like "Got it!", "Cool," "That makes sense," or "Awesome."
+          - Don't be too formal or robotic.
+          
           Protocol:
-          1. Greet the user and ask the first question.
-          2. LISTEN carefully. You might hear your own voice as an echo; YOU MUST IGNORE IT.
-          3. Only consider input as a "user answer" if it is NOT a repetition of your own question.
-          4. When you have a clear answer, call 'save_answer' with the question and the answer.
-          5. After saving, IMMEDIATELY ask the next question.
-          6. If you have asked all questions, thank the user and call 'finish_form'.
+          1. Greet the user casually and ask the first question.
+          2. LISTEN carefully. Ignore any echoes of your own voice.
+          3. When you get an answer, call 'save_answer' and then move to the next thing.
+          4. IMPORTANT: NEVER ask the same question twice. If you've already asked it and got an answer, move on.
+          5. After the last question, say something like "Thanks a ton for your time! Have a fantastic day!" and then call 'finish_form'.
           
           Questions:
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
           
           CRITICAL RULES:
           - Do NOT answer your own questions.
-          - Do NOT assume the user said something if you only heard yourself.
-          - If the user repeats your question, wait for them to provide an actual answer.
-          - Stay in character as a professional interviewer.
-          - If the user provides a very short or vague answer, ask for more details before saving.
-          - You have full memory of the conversation history in this session.`,
+          - Do NOT repeat questions that are already answered in the 'Current Progress'.
+          - If the user is vague, just ask "Could you tell me a bit more about that?" in a friendly way.
+          - You have full memory of this conversation.`,
           tools: [{
             functionDeclarations: [
               {
@@ -461,8 +463,11 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                       console.error("AI Analysis failed:", analysisErr);
                     }
 
-                    setIsFinished(true);
-                    cleanup();
+                    // Delay finishing to allow the agent to finish its final "Thank you" sentence
+                    setTimeout(() => {
+                      setIsFinished(true);
+                      cleanup();
+                    }, 4000);
                     
                     sessionPromise.then(session => {
                       session.sendToolResponse({
