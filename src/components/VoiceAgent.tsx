@@ -198,8 +198,10 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - EACH question requires a fresh response from the user. NEVER reuse a previous answer for a new question.
           - NEVER hallucinate or simulate the user's response. If the user is silent, you must wait.
           - Start the conversation immediately by greeting the user (e.g., "Hello ${respondentName}, thank you for your time. Let's get started with the form.")
-          - Ask one question at a time. Move to the next question ONLY after you have received a REAL, NEW answer from the user for the current question.
+          - Ask one question at a time. Move to the next question ONLY after you have received a REAL, NEW, and CLEAR answer from the user for the current question.
+          - CRITICAL: If the user's response is unclear, too short, silent, or doesn't actually answer the question, you MUST politely ask the question again or ask for clarification. Do NOT move to the next question until you have a meaningful answer.
           - Use 'save_answer' immediately when you have the information for the CURRENT question.
+          - FORBIDDEN: Do NOT call 'save_answer' with a blank, empty, or "I don't know" style answer if it doesn't provide the requested information. If the user refuses to answer, ask them again once before deciding how to proceed.
           - FORBIDDEN: Do NOT call 'save_answer' multiple times in a single turn. You must receive a new response from the user for each question.
           - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.
           
@@ -286,6 +288,22 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                 if (fc.name === 'save_answer') {
                   try {
                     const { question, answer } = fc.args as any;
+                    
+                    // Basic validation to prevent saving blank or noise as answers
+                    if (!answer || answer.trim().length < 1) {
+                      console.warn("Agent tried to save a blank answer. Rejecting.");
+                      sessionPromise.then(session => {
+                        session.sendToolResponse({
+                          functionResponses: [{
+                            name: fc.name,
+                            id: fc.id,
+                            response: { success: false, error: "Answer cannot be blank. Please ask the user again." }
+                          }]
+                        });
+                      });
+                      continue;
+                    }
+
                     // Fetch current response to merge answers safely
                     const currentResponse = await responseService.getResponse(responseId);
                     const currentAnswers = currentResponse?.answers || {};

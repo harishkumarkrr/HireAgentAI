@@ -159,12 +159,9 @@ function AppContent() {
     else if (path === '/profile') setView('profile');
     else if (path === '/dashboard') setView('dashboard');
     else if (path === '/create') setView('create');
-    else if (path === '/') {
-      // Handle home/dashboard based on auth
-      if (user) setView('dashboard');
-      else setView('home');
-    }
-  }, [location.pathname, user]);
+    else if (path === '/responses') setView('responses');
+    else if (path === '/') setView('home');
+  }, [location.pathname]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -174,10 +171,11 @@ function AppContent() {
       const params = new URLSearchParams(window.location.search);
       const formId = params.get('f');
       
-      if (u && !formId && location.pathname === '/') {
+      // Only redirect to dashboard on initial load if at root and logged in
+      // but let's make it less aggressive so they can still visit the landing page
+      if (u && !formId && location.pathname === '/' && !sessionStorage.getItem('visited_home')) {
         navigate('/dashboard');
-      } else if (!u && !formId && location.pathname === '/') {
-        navigate('/');
+        sessionStorage.setItem('visited_home', 'true');
       }
     });
     return () => unsubscribe();
