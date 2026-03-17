@@ -53,7 +53,8 @@ import {
   Smile,
   Meh,
   Frown,
-  BrainCircuit
+  BrainCircuit,
+  Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
@@ -96,7 +97,7 @@ export default function App() {
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'home' | 'create' | 'respond' | 'dashboard' | 'responses' | 'response-detail' | 'profile'>('home');
+  const [view, setView] = useState<'home' | 'create' | 'respond' | 'dashboard' | 'responses' | 'response-detail' | 'profile' | 'privacy' | 'terms' | 'contact'>('home');
   const [forms, setForms] = useState<Form[]>([]);
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
   const [responses, setResponses] = useState<FormResponse[]>([]);
@@ -244,7 +245,11 @@ function AppContent() {
       setAuthName('');
     } catch (error: any) {
       console.error("Auth failed:", error);
-      setAuthError(error.message || "Authentication failed.");
+      if (error.code === 'auth/operation-not-allowed') {
+        setAuthError("Email/Password login is not enabled in your Firebase project. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else {
+        setAuthError(error.message || "Authentication failed.");
+      }
     } finally {
       setIsAuthenticating(false);
     }
@@ -341,6 +346,7 @@ function AppContent() {
         'ja-JP': "こんにちは、私はあなたの音声アシスタントです。今日はどのようなお手伝いができますか？"
       }[newForm.language] || "Hello, I am your voice assistant.";
 
+      console.log("Testing voice:", newForm.voice);
       const response = await ai.models.generateContent({
         model: import.meta.env.VITE_TTS_MODEL || "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: sampleText }] }],
@@ -348,7 +354,10 @@ function AppContent() {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: newForm.voice as any },
+              prebuiltVoiceConfig: { 
+                voiceName: newForm.voice,
+                voice_name: newForm.voice
+              } as any,
             },
           },
         },
@@ -516,7 +525,7 @@ function AppContent() {
           key: 'rzp_test_dummy_key', // Mock test key
           amount: '99900', // 999 INR in paise
           currency: 'INR',
-          name: 'AI Studio Forms',
+          name: 'HireYourAgent',
           description: 'Professional Plan Subscription',
           handler: function (response: any) {
             alert('Payment successful! Payment ID: ' + response.razorpay_payment_id);
@@ -541,9 +550,9 @@ function AppContent() {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
             <div className="bg-emerald-600 p-2 rounded-xl shadow-lg shadow-emerald-100">
-              <MessageSquare className="w-6 h-6 text-white" />
+              <Bot className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight">HireAgent <span className="text-emerald-600">AI</span></span>
+            <span className="text-xl font-bold tracking-tight">HireYour<span className="text-emerald-600">Agent</span></span>
           </div>
           
           <div className="flex items-center gap-4">
@@ -1476,6 +1485,109 @@ function AppContent() {
               </div>
             </motion.div>
           )}
+
+          {view === 'privacy' && (
+            <motion.div
+              key="privacy"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-4xl mx-auto bg-white p-8 md:p-12 rounded-3xl border border-gray-100 shadow-sm prose prose-emerald max-w-none"
+            >
+              <h1 className="text-4xl font-extrabold tracking-tight mb-8">Privacy Policy</h1>
+              <p className="text-gray-500 mb-8">Last updated: March 16, 2026</p>
+              
+              <h3>1. Information We Collect</h3>
+              <p>We collect information you provide directly to us when you create an account, use our services, or communicate with us. This includes your name, email address, and any voice data or text input provided during interactions with our AI agents.</p>
+              
+              <h3>2. How We Use Your Information</h3>
+              <p>We use the information we collect to provide, maintain, and improve our services, process transactions (including payments via Razorpay), send you technical notices and support messages, and respond to your comments and questions.</p>
+              
+              <h3>3. Data Sharing and Security</h3>
+              <p>We do not sell your personal information. We may share your information with third-party vendors, consultants, and other service providers who need access to such information to carry out work on our behalf (e.g., Razorpay for payment processing). We implement reasonable security measures to protect your personal information.</p>
+              
+              <h3>4. Your Choices</h3>
+              <p>You may update, correct, or delete your account information at any time by logging into your account or contacting us.</p>
+            </motion.div>
+          )}
+
+          {view === 'terms' && (
+            <motion.div
+              key="terms"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-4xl mx-auto bg-white p-8 md:p-12 rounded-3xl border border-gray-100 shadow-sm prose prose-emerald max-w-none"
+            >
+              <h1 className="text-4xl font-extrabold tracking-tight mb-8">Terms of Service</h1>
+              <p className="text-gray-500 mb-8">Last updated: March 16, 2026</p>
+              
+              <h3>1. Acceptance of Terms</h3>
+              <p>By accessing or using HireYourAgent, you agree to be bound by these Terms of Service and all applicable laws and regulations.</p>
+              
+              <h3>2. User Accounts</h3>
+              <p>You are responsible for safeguarding the password that you use to access the service and for any activities or actions under your password. You must notify us immediately upon becoming aware of any breach of security or unauthorized use of your account.</p>
+              
+              <h3>3. Payments, Billing, and Refunds</h3>
+              <p>Certain aspects of the service may be provided for a fee or other charge. If you elect to use paid aspects of the service, you agree to the pricing and payment terms. We use Razorpay as our third-party service provider for payment services. By paying for our services, you agree to be bound by Razorpay's Terms of Service.</p>
+              <p><strong>Refund & Cancellation Policy:</strong> Subscriptions can be canceled at any time. If you are unsatisfied with our service, you may request a refund within 7 days of your initial purchase by contacting our support team. Refunds will be processed within 5-7 business days to the original payment method.</p>
+              
+              <h3>4. Acceptable Use</h3>
+              <p>You agree not to use the service to collect sensitive personal information without proper consent, or to engage in any unlawful or prohibited activities.</p>
+              
+              <h3>5. Limitation of Liability</h3>
+              <p>In no event shall HireYourAgent, nor its directors, employees, partners, agents, suppliers, or affiliates, be liable for any indirect, incidental, special, consequential or punitive damages.</p>
+            </motion.div>
+          )}
+
+          {view === 'contact' && (
+            <motion.div
+              key="contact"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-4xl mx-auto bg-white p-8 md:p-12 rounded-3xl border border-gray-100 shadow-sm"
+            >
+              <h1 className="text-4xl font-extrabold tracking-tight mb-8">Contact Us</h1>
+              <p className="text-gray-600 mb-8 text-lg">Have questions about HireYourAgent? We're here to help.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                <div className="space-y-8">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-emerald-100 p-3 rounded-xl text-emerald-600">
+                      <Mail className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">Email Support</h3>
+                      <p className="text-gray-500 mb-2">Our team typically responds within 24 hours.</p>
+                      <a href="mailto:support@hireyouragent.com" className="text-emerald-600 font-medium hover:underline">support@hireyouragent.com</a>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                  <h3 className="font-bold text-lg mb-4">Send us a message</h3>
+                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setToast({ message: 'Message sent successfully!', type: 'success' }); }}>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                      <input type="text" required className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input type="email" required className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                      <textarea required rows={4} className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"></textarea>
+                    </div>
+                    <button type="submit" className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors">
+                      Send Message
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -1516,7 +1628,7 @@ function AppContent() {
                       <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Sparkles className="w-12 h-12 text-emerald-600" />
                       </div>
-                      <h3 className="text-3xl font-bold text-gray-900">Welcome to AI Studio Forms</h3>
+                      <h3 className="text-3xl font-bold text-gray-900">Welcome to HireYourAgent</h3>
                       <p className="text-xl text-gray-500 max-w-md mx-auto">
                         Transform your static forms into engaging, conversational AI agents that talk to your users.
                       </p>
@@ -1786,14 +1898,14 @@ function AppContent() {
       <footer className="mt-20 border-t border-gray-200 py-12 px-6 bg-white">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2 grayscale opacity-50">
-            <MessageSquare className="w-5 h-5" />
-            <span className="font-bold">HireAgent AI</span>
+            <Bot className="w-5 h-5" />
+            <span className="font-bold">HireYourAgent</span>
           </div>
-          <p className="text-gray-400 text-sm">© 2026 HireAgent AI. All rights reserved.</p>
+          <p className="text-gray-400 text-sm">© 2026 HireYourAgent. All rights reserved.</p>
           <div className="flex gap-6 text-sm font-medium text-gray-400">
-            <a href="#" className="hover:text-gray-600">Privacy</a>
-            <a href="#" className="hover:text-gray-600">Terms</a>
-            <a href="#" className="hover:text-gray-600">Contact</a>
+            <button onClick={() => setView('privacy')} className="hover:text-gray-600">Privacy</button>
+            <button onClick={() => setView('terms')} className="hover:text-gray-600">Terms</button>
+            <button onClick={() => setView('contact')} className="hover:text-gray-600">Contact</button>
           </div>
         </div>
       </footer>
