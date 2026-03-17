@@ -22,6 +22,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const [isFinished, setIsFinished] = useState(false);
   const [localTranscript, setLocalTranscript] = useState<TranscriptEntry[]>([]);
   const [currentQuestionNum, setCurrentQuestionNum] = useState(1);
+  const [agentState, setAgentState] = useState<'idle' | 'greeting' | 'asking' | 'listening' | 'saving' | 'finishing'>('idle');
   
   const [agentVolume, setAgentVolume] = useState(0);
   const [showDebug, setShowDebug] = useState(false);
@@ -37,6 +38,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   const answersRef = useRef<Record<string, string>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const lastAgentMessageRef = useRef<string>("");
   const lastAgentSpeakTimeRef = useRef<number>(0);
@@ -53,6 +55,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
     }
     console.log("VoiceAgent state - isActive:", isActive, "isConnecting:", isConnecting, "isFinished:", isFinished);
   }, [isActive, isConnecting, isFinished, isAgentSpeaking]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [localTranscript, isAgentSpeaking, isUserSpeaking]);
 
   useEffect(() => {
     if (isFinished) {
@@ -158,6 +166,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       answersRef.current = {};
       setCurrentQuestionNum(1);
       setLocalTranscript([]);
+      setAgentState('greeting');
 
       // Check for API key selection if required by the platform
       const aistudio = (window as any).aistudio;
@@ -230,9 +239,16 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           systemInstruction: `You are a friendly and casual AI assistant conducting a chat for "${form.title}".
           Respondent: ${respondentName}
           
-          Current Progress:
-          - Questions Answered: ${Object.keys(answersRef.current).length}
-          - Total Questions: ${form.questions.length}
+          Current Conversation State: ${agentState}
+          Current Question Index: ${currentQuestionNum - 1}
+          Questions Answered: ${Object.keys(answersRef.current).length} / ${form.questions.length}
+          
+          Workflow Logic (LangGraph-style):
+          1. [GREETING] -> Greet the user casually and ask the first question.
+          2. [ASKING] -> Ask the current question clearly.
+          3. [LISTENING] -> Wait for the user to answer. Do NOT interrupt.
+          4. [SAVING] -> Once an answer is received, call 'save_answer' and acknowledge it.
+          5. [FINISHING] -> After all questions, say a warm goodbye and call 'finish_form'.
           
           Tone & Style:
           - Talk naturally and casually, like a friend. 
@@ -240,21 +256,19 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - Don't be too formal or robotic.
           
           Protocol:
-          1. Greet the user casually and ask the first question.
-          2. LISTEN carefully. Ignore any echoes of your own voice.
-          3. When you get an answer, call 'save_answer' and then move to the next thing.
-          4. IMPORTANT: NEVER ask the same question twice. If you've already asked it and got an answer, move on.
-          5. After the last question, say something like "Thanks a ton for your time! Have a fantastic day!" and then call 'finish_form'.
+          - LISTEN carefully. Ignore any echoes of your own voice.
+          - IMPORTANT: NEVER ask the same question twice. If you've already asked it and got an answer, move on.
+          - If the user is vague, just ask "Could you tell me a bit more about that?" in a friendly way.
+          - You have full memory of this conversation.
+          - WAIT for the user to finish speaking. Do not interrupt.
           
-          Questions:
+          Questions to ask:
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
           
           CRITICAL RULES:
           - Do NOT answer your own questions.
-          - Do NOT repeat questions that are already answered in the 'Current Progress'.
-          - If the user is vague, just ask "Could you tell me a bit more about that?" in a friendly way.
-          - You have full memory of this conversation.
-          - WAIT for the user to finish speaking. Do not interrupt.`,
+          - Do NOT repeat questions that are already answered.
+          - If you hear yourself (echo), ignore it completely.`,
           tools: [{
             functionDeclarations: [
               {
@@ -319,67 +333,73 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             const serverContent = message.serverContent as any;
             
             // 1. Handle Agent Transcription
-            const agentText = serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
-            if (agentText) {
-              console.log("Agent Transcription:", agentText);
-              lastAgentMessageRef.current = agentText;
-              
-              setLocalTranscript(prev => [...prev.slice(-4), { role: 'agent', text: agentText, timestamp: new Date().toISOString() }]);
-              
-              const newEntry: TranscriptEntry = {
-                role: 'agent',
-                text: agentText,
-                timestamp: new Date().toISOString()
-              };
-              
-              const lastEntry = transcriptRef.current[transcriptRef.current.length - 1];
-              if (!lastEntry || lastEntry.text !== agentText || lastEntry.role !== 'agent') {
-                transcriptRef.current.push(newEntry);
-                debouncedSaveTranscript();
+            const agentParts = serverContent?.modelTurn?.parts?.filter((p: any) => p.text);
+            if (agentParts && agentParts.length > 0) {
+              const agentText = agentParts.map((p: any) => p.text).join(" ").trim();
+              if (agentText) {
+                console.log("Agent Transcription:", agentText);
+                lastAgentMessageRef.current = agentText;
+                
+                setLocalTranscript(prev => [...prev, { role: 'agent', text: agentText, timestamp: new Date().toISOString() }]);
+                
+                const newEntry: TranscriptEntry = {
+                  role: 'agent',
+                  text: agentText,
+                  timestamp: new Date().toISOString()
+                };
+                
+                const lastEntry = transcriptRef.current[transcriptRef.current.length - 1];
+                if (!lastEntry || lastEntry.text !== agentText || lastEntry.role !== 'agent') {
+                  transcriptRef.current.push(newEntry);
+                  debouncedSaveTranscript();
+                }
               }
             }
 
             // 2. Handle User Transcription
-            const userText = serverContent?.userTurn?.parts?.find((p: any) => p.text)?.text;
-            if (userText) {
-              console.log("User Transcription (Raw):", userText);
-              
-              // ECHO CANCELLATION: If agent is speaking or just finished, check if userText is just an echo
-              const now = Date.now();
-              const isAgentTalking = isAgentSpeakingRef.current || (now - lastAgentSpeakTimeRef.current < 2000);
-              
-              const isEcho = isAgentTalking && 
-                            lastAgentMessageRef.current && 
-                            (userText.toLowerCase().includes(lastAgentMessageRef.current.toLowerCase().substring(0, 10)) || 
-                             lastAgentMessageRef.current.toLowerCase().includes(userText.toLowerCase()));
+            const userParts = serverContent?.userTurn?.parts?.filter((p: any) => p.text);
+            if (userParts && userParts.length > 0) {
+              const userText = userParts.map((p: any) => p.text).join(" ").trim();
+              if (userText) {
+                console.log("User Transcription (Raw):", userText);
+                
+                // ECHO CANCELLATION: If agent is speaking or just finished, check if userText is just an echo
+                const now = Date.now();
+                const isAgentTalking = isAgentSpeakingRef.current || (now - lastAgentSpeakTimeRef.current < 2000);
+                
+                const isEcho = isAgentTalking && 
+                              lastAgentMessageRef.current && 
+                              (userText.toLowerCase().includes(lastAgentMessageRef.current.toLowerCase().substring(0, 10)) || 
+                               lastAgentMessageRef.current.toLowerCase().includes(userText.toLowerCase()));
 
-              if (isEcho) {
-                console.log("Filtered out echo:", userText);
-                return;
-              }
+                if (isEcho) {
+                  console.log("Filtered out echo:", userText);
+                  return;
+                }
 
-              // If the agent is currently speaking, we ignore user input to prevent self-answering
-              if (isAgentSpeakingRef.current) {
-                console.log("Ignoring user input while agent is speaking:", userText);
-                return;
-              }
+                // If the agent is currently speaking, we ignore user input to prevent self-answering
+                if (isAgentSpeakingRef.current) {
+                  console.log("Ignoring user input while agent is speaking:", userText);
+                  return;
+                }
 
-              // Avoid duplicate user transcriptions
-              if (userText === lastUserTextRef.current) return;
-              lastUserTextRef.current = userText;
+                // Avoid duplicate user transcriptions
+                if (userText === lastUserTextRef.current) return;
+                lastUserTextRef.current = userText;
 
-              setLocalTranscript(prev => [...prev.slice(-4), { role: 'user', text: userText, timestamp: new Date().toISOString() }]);
-              
-              const newEntry: TranscriptEntry = {
-                role: 'user',
-                text: userText,
-                timestamp: new Date().toISOString()
-              };
-              
-              const lastEntry = transcriptRef.current[transcriptRef.current.length - 1];
-              if (!lastEntry || lastEntry.text !== userText || lastEntry.role !== 'user') {
-                transcriptRef.current.push(newEntry);
-                debouncedSaveTranscript();
+                setLocalTranscript(prev => [...prev, { role: 'user', text: userText, timestamp: new Date().toISOString() }]);
+                
+                const newEntry: TranscriptEntry = {
+                  role: 'user',
+                  text: userText,
+                  timestamp: new Date().toISOString()
+                };
+                
+                const lastEntry = transcriptRef.current[transcriptRef.current.length - 1];
+                if (!lastEntry || lastEntry.text !== userText || lastEntry.role !== 'user') {
+                  transcriptRef.current.push(newEntry);
+                  debouncedSaveTranscript();
+                }
               }
             }
             
@@ -388,6 +408,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               for (const fc of toolCall.functionCalls) {
                 console.log("Function call received:", fc.name, fc.args);
                 if (fc.name === 'save_answer') {
+                  setAgentState('saving');
                   try {
                     const { question, answer } = fc.args as any;
                     
@@ -413,6 +434,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                     const qIndex = form.questions.indexOf(question);
                     if (qIndex !== -1) {
                       setCurrentQuestionNum(Math.min(qIndex + 2, form.questions.length));
+                      setAgentState('asking');
                     }
 
                     sessionPromise.then(session => {
@@ -438,6 +460,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                     });
                   }
                 } else if (fc.name === 'finish_form') {
+                  setAgentState('finishing');
                   try {
                     await responseService.updateResponse(responseId, { status: 'completed' });
                     
@@ -449,7 +472,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                           .map(t => `${t.role === 'user' ? 'Candidate' : 'AI Agent'}: ${t.text}`)
                           .join('\n');
                         
-                        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                        const analysisAi = new GoogleGenAI({ apiKey });
                         
                         const analysisPrompt = `
                           Analyze the following interview/form transcript and provide:
@@ -466,7 +489,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                           }
                         `;
                         
-                        const result = await ai.models.generateContent({
+                        const result = await analysisAi.models.generateContent({
                           model: "gemini-3-flash-preview",
                           contents: [{ parts: [{ text: analysisPrompt }] }]
                         });
@@ -717,6 +740,11 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             >
               {showDebug ? 'Hide Logs' : 'Show Logs'}
             </button>
+            {isActive && (
+              <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 font-mono uppercase">
+                State: {agentState}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {isActive && (
@@ -731,7 +759,10 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           </div>
         </div>
         
-        <div className={`p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all duration-300 ${showDebug ? 'min-h-[300px] max-h-[500px]' : 'min-h-[160px] max-h-[300px]'} overflow-y-auto space-y-4`}>
+        <div 
+          ref={scrollRef}
+          className={`p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all duration-300 ${showDebug ? 'min-h-[300px] max-h-[500px]' : 'min-h-[160px] max-h-[300px]'} overflow-y-auto space-y-4`}
+        >
           {isActive ? (
             localTranscript.length > 0 ? (
               <div className="space-y-3">
