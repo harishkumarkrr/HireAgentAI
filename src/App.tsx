@@ -161,8 +161,13 @@ function AppContent() {
     if (formId) {
       formService.getForm(formId).then(f => {
         if (f) {
+          console.log("Loaded form from shared link:", f.id);
+          console.log("Form voice:", f.voice);
+          console.log("Form language:", f.language);
           setSelectedForm(f);
           setView('respond');
+        } else {
+          console.error("Form not found for ID:", formId);
         }
       });
     }

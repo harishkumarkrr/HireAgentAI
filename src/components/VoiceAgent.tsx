@@ -78,10 +78,11 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       nextPlayTimeRef.current = audioContextRef.current.currentTime + 0.02; // very small buffer
     }
 
-    while (audioQueueRef.current.length > 0) {
-      const chunk = audioQueueRef.current.shift()!;
-      const buffer = audioContextRef.current.createBuffer(1, chunk.length, 16000);
-      buffer.getChannelData(0).set(chunk);
+      while (audioQueueRef.current.length > 0) {
+        const chunk = audioQueueRef.current.shift()!;
+        // Gemini Live API typically outputs at 24000Hz
+        const buffer = audioContextRef.current.createBuffer(1, chunk.length, 24000);
+        buffer.getChannelData(0).set(chunk);
 
       const source = audioContextRef.current.createBufferSource();
       source.buffer = buffer;
@@ -128,7 +129,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
       const ai = new GoogleGenAI({ apiKey });
       
-      // Use 16000Hz as recommended in the Live API examples
+      // Use 16000Hz for input as recommended, but we'll handle 24000Hz for output playback
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       
       if (audioContextRef.current.state === 'suspended') {
@@ -148,17 +149,23 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
         await audioContextRef.current.resume();
       }
       
-      console.log("Connecting to Gemini Live API with voice:", form.voice || "Zephyr");
+      const modelName = import.meta.env.VITE_VOICE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025";
+      const selectedVoice = form.voice || "Zephyr";
+      
+      console.log("--- Gemini Live API Connection ---");
+      console.log("Model:", modelName);
+      console.log("Voice:", selectedVoice);
+      console.log("Form ID:", form.id);
+      console.log("----------------------------------");
+
       const sessionPromise = ai.live.connect({
-        model: import.meta.env.VITE_VOICE_MODEL || "gemini-2.5-flash-native-audio-preview-09-2025",
+        model: modelName,
         config: {
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: form.voice || "Zephyr" } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
           },
-          generationConfig: {
-            temperature: 0.7,
-            responseModalities: [Modality.AUDIO],
-          },
+          temperature: 0.7,
+          responseModalities: [Modality.AUDIO],
           systemInstruction: `You are a helpful AI agent conducting a conversational form titled "${form.title}".
           Description: ${form.description}
           Respondent Name: ${respondentName}
