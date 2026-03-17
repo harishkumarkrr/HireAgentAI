@@ -292,7 +292,7 @@ function AppContent() {
     if (!newForm.title || !newForm.questions) return;
     
     if (forms.length >= 3) {
-      setToast({ message: "You have reached the limit of 3 agents on the Starter plan. Upgrade to create more.", type: 'error' });
+      setToast({ message: "You have reached the limit of 3 agents on the Starter plan. Professional plan coming soon.", type: 'error' });
       return;
     }
 
@@ -760,14 +760,15 @@ function AppContent() {
                       name: "Professional", 
                       price: Intl.DateTimeFormat().resolvedOptions().timeZone.includes('Asia/Calcutta') || Intl.DateTimeFormat().resolvedOptions().timeZone.includes('Asia/Kolkata') ? "₹999" : "$29", 
                       features: ["Unlimited Agents", "1,000 Responses/mo", "AI Sentiment Analysis", "Premium Voices", "Custom Branding"],
-                      button: "Upgrade Now",
-                      popular: true
+                      button: "Coming Soon",
+                      popular: true,
+                      isComingSoon: true
                     }
                   ].map((plan, i) => (
                     <div key={i} className={`p-8 rounded-3xl border ${plan.popular ? 'border-emerald-500 bg-white shadow-2xl shadow-emerald-100 relative scale-105 z-10' : 'border-gray-100 bg-white shadow-sm'} space-y-6`}>
                       {plan.popular && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-4 py-1 rounded-full text-xs font-bold">
-                          MOST POPULAR
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap">
+                          {plan.isComingSoon ? "MOST AWAITED FEATURE" : "MOST POPULAR"}
                         </div>
                       )}
                       <div className="space-y-1">
@@ -786,8 +787,9 @@ function AppContent() {
                         ))}
                       </ul>
                       <button 
-                        onClick={() => plan.name === "Starter" ? (!user ? setShowAuthModal(true) : setView('dashboard')) : handlePayment()}
-                        className={`w-full py-4 rounded-xl font-bold transition-all ${plan.popular ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-100' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}
+                        disabled={plan.isComingSoon}
+                        onClick={() => plan.name === "Starter" ? (!user ? setShowAuthModal(true) : setView('dashboard')) : (plan.isComingSoon ? null : handlePayment())}
+                        className={`w-full py-4 rounded-xl font-bold transition-all ${plan.popular ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-100' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'} ${plan.isComingSoon ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {plan.button}
                       </button>
@@ -1157,14 +1159,14 @@ function AppContent() {
 
                   <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-8 rounded-3xl shadow-xl text-white flex flex-col sm:flex-row items-center justify-between gap-6">
                     <div className="space-y-2 text-center sm:text-left">
-                      <h3 className="text-2xl font-bold">Upgrade to Professional</h3>
-                      <p className="text-gray-400 max-w-md">Get unlimited agents, custom branding, and advanced analytics.</p>
+                      <h3 className="text-2xl font-bold">Professional Plan</h3>
+                      <p className="text-gray-400 max-w-md">Get unlimited agents, custom branding, and advanced analytics. Coming soon!</p>
                     </div>
                     <button 
-                      onClick={() => setToast({ message: "Upgrade functionality coming soon!", type: 'success' })}
-                      className="whitespace-nowrap px-8 py-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/30"
+                      disabled
+                      className="whitespace-nowrap px-8 py-4 bg-gray-700 text-gray-400 rounded-xl font-bold cursor-not-allowed transition-all shadow-lg"
                     >
-                      Upgrade Now
+                      Coming Soon
                     </button>
                   </div>
                 </div>
@@ -1202,7 +1204,7 @@ function AppContent() {
                   </button>
                   {forms.length >= 3 && (
                     <div className="absolute top-full right-0 mt-2 w-64 bg-gray-900 text-white text-xs p-3 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                      Starter plan limit reached. Upgrade to Professional for unlimited agents.
+                      Starter plan limit reached. Professional plan coming soon for unlimited agents.
                     </div>
                   )}
                 </div>

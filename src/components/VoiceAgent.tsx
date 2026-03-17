@@ -31,6 +31,9 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const isPlayingRef = useRef(false);
   const nextPlayTimeRef = useRef(0);
   const userVolumeRef = useRef(0);
+  const transcriptRef = useRef<TranscriptEntry[]>([]);
+  const answersRef = useRef<Record<string, string>>({});
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const isActiveRef = useRef(false);
   
@@ -68,7 +71,23 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
     }
     setIsActive(false);
     setIsConnecting(false);
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
   }, []);
+
+  const debouncedSaveTranscript = useCallback(async () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await responseService.updateResponse(responseId, {
+          transcript: transcriptRef.current
+        });
+      } catch (err) {
+        console.error("Debounced transcript save failed:", err);
+      }
+    }, 2000);
+  }, [responseId]);
 
   const playNextInQueue = useCallback(() => {
     if (!audioContextRef.current || audioQueueRef.current.length === 0) {
@@ -109,6 +128,10 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       console.log("Questions:", form.questions);
       setIsConnecting(true);
       setError(null);
+      transcriptRef.current = [];
+      answersRef.current = {};
+      setCurrentQuestionNum(1);
+      setLocalTranscript([]);
 
       // Check for API key selection if required by the platform
       const aistudio = (window as any).aistudio;
@@ -174,13 +197,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
           },
-          temperature: 0.7,
+          temperature: 0.5, // Lower temperature for more focused responses
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          systemInstruction: `You are a helpful AI agent conducting a conversational form titled "${form.title}".
-          Description: ${form.description}
-          Respondent Name: ${respondentName}
+          systemInstruction: `You are a professional AI interviewer conducting "${form.title}".
+          Respondent: ${respondentName}
           
           Language: ${
             {
@@ -198,33 +220,23 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             }[form.language] || 'English'
           }
           
-          Voice Persona: You must speak using the "${form.voice || 'Zephyr'}" voice persona. ${form.voice === 'Kore' ? 'This is a warm, friendly female voice.' : form.voice === 'Puck' ? 'This is a light, friendly voice.' : form.voice === 'Charon' ? 'This is a deep, authoritative male voice.' : form.voice === 'Fenrir' ? 'This is a bold, strong male voice.' : 'This is a neutral male voice.'}
-          
-          Your goal is to ask the following questions one by one:
+          Questions to ask:
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
-          Guidelines:
-          - You are a STATE MACHINE. 
-          - State 1: Greet and ask Question 1.
-          - State 2: Wait for Answer 1.
-          - State 3: Save Answer 1 and ask Question 2.
-          - ... and so on.
-          - NEVER skip a state. NEVER repeat a state that is finished.
-          - Ask ONLY ONE question at a time and WAIT for the user to respond.
-          - Keep track of which question number you are currently on (1 to ${form.questions.length}).
-          - EACH question requires a fresh response from the user. NEVER reuse a previous answer for a new question.
-          - NEVER hallucinate or simulate the user's response. If the user is silent, you must wait.
-          - Start the conversation immediately by greeting the user (e.g., "Hello ${respondentName}, thank you for your time. Let's get started with the form.")
-          - Ask one question at a time. Move to the next question ONLY after you have received a REAL, NEW, and CLEAR answer from the user for the current question.
-          - CRITICAL: If the user's response is unclear, too short, silent, or doesn't actually answer the question, you MUST politely ask the question again or ask for clarification. Do NOT move to the next question until you have a meaningful answer.
-          - Use 'save_answer' immediately when you have the information for the CURRENT question.
-          - FORBIDDEN: Do NOT call 'save_answer' with a blank, empty, or "I don't know" style answer if it doesn't provide the requested information. If the user refuses to answer, ask them again once before deciding how to proceed.
-          - FORBIDDEN: Do NOT call 'save_answer' multiple times in a single turn. You must receive a new response from the user for each question.
-          - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.
-          
-          CRITICAL: If you just saved an answer for question X, you MUST explicitly ask question X+1 next and then STOP to listen. Do not assume you know the answer to the next question based on what was said before. Maintain a clear state of which questions are completed.
-          CRITICAL: NEVER ask the same question twice if you have already received and saved an answer for it. If you are unsure, check your internal state.
-          CRITICAL: If you hear your own voice (echo), ignore it. Wait for a clear user response.`,
+          Protocol:
+          1. Greet ${respondentName} and ask Question 1.
+          2. Wait for a clear answer. If unclear, ask for clarification.
+          3. Once answered, call 'save_answer' and IMMEDIATELY ask the NEXT question.
+          4. Continue until ALL ${form.questions.length} questions are answered.
+          5. After the LAST question is answered and saved, thank them and call 'finish_form'.
+
+          Rules:
+          - Ask ONLY ONE question at a time.
+          - NEVER skip questions.
+          - NEVER repeat questions already answered.
+          - If the user is silent, wait patiently.
+          - Do not hallucinate user input.
+          - Be concise and professional.`,
           tools: [{
             functionDeclarations: [
               {
@@ -291,22 +303,17 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             if (agentText) {
               console.log("Agent Transcription:", agentText);
               setLocalTranscript(prev => [...prev.slice(-4), { role: 'agent', text: agentText, timestamp: new Date().toISOString() }]);
-              try {
-                const currentResponse = await responseService.getResponse(responseId);
-                const transcript = currentResponse?.transcript || [];
-                // Avoid duplicate entries if the same text is sent multiple times in chunks (though transcriptions usually come once)
-                const lastEntry = transcript[transcript.length - 1];
-                if (!lastEntry || lastEntry.text !== agentText || lastEntry.role !== 'agent') {
-                  await responseService.updateResponse(responseId, {
-                    transcript: [...transcript, {
-                      role: 'agent',
-                      text: agentText,
-                      timestamp: new Date().toISOString()
-                    }]
-                  });
-                }
-              } catch (err) {
-                console.error("Error saving agent transcript:", err);
+              
+              const newEntry: TranscriptEntry = {
+                role: 'agent',
+                text: agentText,
+                timestamp: new Date().toISOString()
+              };
+              
+              const lastEntry = transcriptRef.current[transcriptRef.current.length - 1];
+              if (!lastEntry || lastEntry.text !== agentText || lastEntry.role !== 'agent') {
+                transcriptRef.current.push(newEntry);
+                debouncedSaveTranscript();
               }
             }
 
@@ -314,21 +321,17 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             if (userText) {
               console.log("User Transcription:", userText);
               setLocalTranscript(prev => [...prev.slice(-4), { role: 'user', text: userText, timestamp: new Date().toISOString() }]);
-              try {
-                const currentResponse = await responseService.getResponse(responseId);
-                const transcript = currentResponse?.transcript || [];
-                const lastEntry = transcript[transcript.length - 1];
-                if (!lastEntry || lastEntry.text !== userText || lastEntry.role !== 'user') {
-                  await responseService.updateResponse(responseId, {
-                    transcript: [...transcript, {
-                      role: 'user',
-                      text: userText,
-                      timestamp: new Date().toISOString()
-                    }]
-                  });
-                }
-              } catch (err) {
-                console.error("Error saving user transcript:", err);
+              
+              const newEntry: TranscriptEntry = {
+                role: 'user',
+                text: userText,
+                timestamp: new Date().toISOString()
+              };
+              
+              const lastEntry = transcriptRef.current[transcriptRef.current.length - 1];
+              if (!lastEntry || lastEntry.text !== userText || lastEntry.role !== 'user') {
+                transcriptRef.current.push(newEntry);
+                debouncedSaveTranscript();
               }
             }
             
@@ -340,30 +343,25 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                   try {
                     const { question, answer } = fc.args as any;
                     
-                    // Basic validation to prevent saving blank or noise as answers
                     if (!answer || answer.trim().length < 1) {
-                      console.warn("Agent tried to save a blank answer. Rejecting.");
                       sessionPromise.then(session => {
                         session.sendToolResponse({
                           functionResponses: [{
                             name: fc.name,
                             id: fc.id,
-                            response: { success: false, error: "Answer cannot be blank. Please ask the user again." }
+                            response: { success: false, error: "Answer cannot be blank." }
                           }]
                         });
                       });
                       continue;
                     }
 
-                    // Fetch current response to merge answers safely
-                    const currentResponse = await responseService.getResponse(responseId);
-                    const currentAnswers = currentResponse?.answers || {};
+                    // Update local cache and Firestore optimistically
+                    answersRef.current[question] = answer;
+                    responseService.updateResponse(responseId, {
+                      answers: { ...answersRef.current }
+                    }).catch(err => console.error("Background answer save failed:", err));
                     
-                    await responseService.updateResponse(responseId, {
-                      answers: { ...currentAnswers, [question]: answer }
-                    });
-                    
-                    // Update current question index for UI
                     const qIndex = form.questions.indexOf(question);
                     if (qIndex !== -1) {
                       setCurrentQuestionNum(Math.min(qIndex + 2, form.questions.length));
