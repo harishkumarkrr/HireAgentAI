@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
+  BrowserRouter, 
+  Routes, 
+  Route, 
+  useNavigate, 
+  useLocation,
+  Navigate
+} from 'react-router-dom';
+import { 
   signInWithPopup, 
   GoogleAuthProvider, 
   onAuthStateChanged, 
@@ -89,13 +97,17 @@ const TEMPLATES = [
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <AppContent />
-    </ErrorBoundary>
+    <BrowserRouter>
+      <ErrorBoundary>
+        <AppContent />
+      </ErrorBoundary>
+    </BrowserRouter>
   );
 }
 
 function AppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'home' | 'create' | 'respond' | 'dashboard' | 'responses' | 'response-detail' | 'profile' | 'privacy' | 'terms' | 'contact'>('home');
@@ -140,6 +152,21 @@ function AppContent() {
   const [totalResponses, setTotalResponses] = useState(0);
 
   useEffect(() => {
+    const path = location.pathname;
+    if (path === '/privacy') setView('privacy');
+    else if (path === '/terms') setView('terms');
+    else if (path === '/contact') setView('contact');
+    else if (path === '/profile') setView('profile');
+    else if (path === '/dashboard') setView('dashboard');
+    else if (path === '/create') setView('create');
+    else if (path === '/') {
+      // Handle home/dashboard based on auth
+      if (user) setView('dashboard');
+      else setView('home');
+    }
+  }, [location.pathname, user]);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
@@ -147,14 +174,14 @@ function AppContent() {
       const params = new URLSearchParams(window.location.search);
       const formId = params.get('f');
       
-      if (u && !formId) {
-        setView('dashboard');
-      } else if (!u && !formId) {
-        setView('home');
+      if (u && !formId && location.pathname === '/') {
+        navigate('/dashboard');
+      } else if (!u && !formId && location.pathname === '/') {
+        navigate('/');
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [navigate, location.pathname]);
 
   // Handle URL parameters for direct form access
   useEffect(() => {
@@ -552,7 +579,7 @@ function AppContent() {
       {/* Navigation */}
       <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
             <div className="bg-emerald-600 p-1.5 rounded-xl shadow-lg shadow-emerald-100 flex items-center justify-center min-w-[48px] min-h-[48px]">
               <Logo className="w-9 h-9" iconClassName="w-9 h-9 text-white" />
             </div>
@@ -563,7 +590,7 @@ function AppContent() {
             {user ? (
               <>
                 <button 
-                  onClick={() => setView('dashboard')}
+                  onClick={() => navigate('/dashboard')}
                   className={`text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${view === 'dashboard' ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600 hover:bg-gray-100'}`}
                 >
                   My Agents
@@ -597,7 +624,7 @@ function AppContent() {
                         </div>
                         <button 
                           onClick={() => {
-                            setView('profile');
+                            navigate('/profile');
                             setShowProfileMenu(false);
                           }} 
                           className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-2 transition-colors"
@@ -664,7 +691,7 @@ function AppContent() {
                     } else if (forms.length >= 3) {
                       setToast({ message: "You have reached the limit of 3 agents on the Starter plan. Upgrade to create more.", type: 'error' });
                     } else {
-                      setView('create');
+                      navigate('/create');
                     }
                   }}
                   className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 text-white px-10 py-5 rounded-2xl text-lg font-bold hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 active:scale-95"
@@ -1925,9 +1952,9 @@ function AppContent() {
           </div>
           <p className="text-gray-400 text-sm">© 2026 HireYourAgent. All rights reserved.</p>
           <div className="flex gap-6 text-sm font-medium text-gray-400">
-            <button onClick={() => setView('privacy')} className="hover:text-gray-600">Privacy</button>
-            <button onClick={() => setView('terms')} className="hover:text-gray-600">Terms</button>
-            <button onClick={() => setView('contact')} className="hover:text-gray-600">Contact</button>
+            <button onClick={() => navigate('/privacy')} className="hover:text-gray-600">Privacy</button>
+            <button onClick={() => navigate('/terms')} className="hover:text-gray-600">Terms</button>
+            <button onClick={() => navigate('/contact')} className="hover:text-gray-600">Contact</button>
           </div>
         </div>
       </footer>
