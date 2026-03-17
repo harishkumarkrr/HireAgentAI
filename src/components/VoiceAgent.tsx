@@ -273,7 +273,10 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           CRITICAL RULES:
           - Do NOT answer your own questions.
           - Do NOT repeat questions that are already answered.
-          - If you hear yourself (echo), ignore it completely.`,
+          - If you hear yourself (echo), ignore it completely.
+          - NEVER produce humming, filler sounds (like "um", "ah", "aah"), or long continuous tones.
+          - When you are done speaking, STOP the audio stream immediately.
+          - If the user is silent, wait patiently without making any noise.`,
           tools: [{
             functionDeclarations: [
               {
@@ -581,15 +584,19 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           }
 
           const pcmData = float32ToInt16(inputData);
-          const base64Data = base64EncodeAudio(pcmData);
           
-          try {
-            sessionRef.current.sendRealtimeInput({
-              media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-            });
-            audioSentCount++;
-          } catch (sendErr) {
-            console.error("Error sending audio:", sendErr);
+          // INPUT NOISE GATE: Only send audio if it's above a certain threshold
+          // This prevents the AI from "hearing" background hiss and humming back.
+          if (rms > 0.005) {
+            const base64Data = base64EncodeAudio(pcmData);
+            try {
+              sessionRef.current.sendRealtimeInput({
+                media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+              });
+              audioSentCount++;
+            } catch (sendErr) {
+              console.error("Error sending audio:", sendErr);
+            }
           }
         }
       };
