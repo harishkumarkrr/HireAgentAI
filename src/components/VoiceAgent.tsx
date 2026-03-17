@@ -75,7 +75,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
     
     // If we are falling behind, reset the play time
     if (nextPlayTimeRef.current < audioContextRef.current.currentTime) {
-      nextPlayTimeRef.current = audioContextRef.current.currentTime + 0.05; // small buffer
+      nextPlayTimeRef.current = audioContextRef.current.currentTime + 0.02; // very small buffer
     }
 
     while (audioQueueRef.current.length > 0) {
@@ -100,7 +100,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
   const startSession = async () => {
     try {
-      console.log("Starting voice session for form:", form.id, "Title:", form.title);
+      console.log("Starting voice session for form:", form.id, "Title:", form.title, "Voice:", form.voice);
       console.log("Questions:", form.questions);
       setIsConnecting(true);
       setError(null);
@@ -139,8 +139,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      // Reduced buffer size for lower latency (2048 samples @ 16kHz ~= 128ms)
-      processorRef.current = audioContextRef.current.createScriptProcessor(2048, 1, 1);
+      // Reduced buffer size for lower latency (1024 samples @ 16kHz ~= 64ms)
+      processorRef.current = audioContextRef.current.createScriptProcessor(1024, 1, 1);
       
       // Ensure context is running
       if (audioContextRef.current.state === 'suspended') {
@@ -175,7 +175,9 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               'ja-JP': 'Japanese'
             }[form.language] || 'English'
           }
-
+          
+          Voice Persona: You must speak using the "${form.voice || 'Zephyr'}" voice persona. ${form.voice === 'Kore' ? 'This is a warm, friendly female voice.' : form.voice === 'Puck' ? 'This is a light, friendly voice.' : form.voice === 'Charon' ? 'This is a deep, authoritative male voice.' : form.voice === 'Fenrir' ? 'This is a bold, strong male voice.' : 'This is a neutral male voice.'}
+          
           Your goal is to ask the following questions one by one:
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 

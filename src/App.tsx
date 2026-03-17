@@ -168,16 +168,19 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (user && (view === 'dashboard' || view === 'profile')) {
+    if (user) {
       const unsubscribe = formService.subscribeToUserForms((data) => {
         setForms(data);
-        if (view === 'profile') {
-          responseService.getTotalResponsesForForms(data.map(f => f.id)).then(setTotalResponses);
-        }
       });
       return () => unsubscribe();
     }
-  }, [user, view]);
+  }, [user]);
+
+  useEffect(() => {
+    if (user && view === 'profile' && forms.length > 0) {
+      responseService.getTotalResponsesForForms(forms.map(f => f.id)).then(setTotalResponses);
+    }
+  }, [user, view, forms]);
 
   useEffect(() => {
     if (user && view === 'responses' && selectedForm) {

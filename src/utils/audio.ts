@@ -5,7 +5,8 @@ export function float32ToInt16(buffer: Float32Array): Int16Array {
   const l = buffer.length;
   const buf = new Int16Array(l);
   for (let i = 0; i < l; i++) {
-    buf[i] = Math.min(1, buffer[i]) * 0x7fff;
+    const s = Math.max(-1, Math.min(1, buffer[i]));
+    buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
   }
   return buf;
 }
