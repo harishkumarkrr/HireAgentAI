@@ -23,6 +23,9 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const [localTranscript, setLocalTranscript] = useState<TranscriptEntry[]>([]);
   const [currentQuestionNum, setCurrentQuestionNum] = useState(1);
   
+  const [agentVolume, setAgentVolume] = useState(0);
+  const [showDebug, setShowDebug] = useState(false);
+  
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -114,6 +117,15 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
       while (audioQueueRef.current.length > 0) {
         const chunk = audioQueueRef.current.shift()!;
+        
+        // Calculate volume for animation
+        let sum = 0;
+        for (let i = 0; i < chunk.length; i++) {
+          sum += chunk[i] * chunk[i];
+        }
+        const rms = Math.sqrt(sum / chunk.length);
+        setAgentVolume(rms);
+
         // Gemini Live API typically outputs at 24000Hz
         const buffer = audioContextRef.current.createBuffer(1, chunk.length, 24000);
         buffer.getChannelData(0).set(chunk);
@@ -130,6 +142,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           setIsAgentSpeaking(false);
           isAgentSpeakingRef.current = false;
           lastAgentSpeakTimeRef.current = Date.now();
+          setAgentVolume(0);
         }
       };
     }
@@ -240,7 +253,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - Do NOT answer your own questions.
           - Do NOT repeat questions that are already answered in the 'Current Progress'.
           - If the user is vague, just ask "Could you tell me a bit more about that?" in a friendly way.
-          - You have full memory of this conversation.`,
+          - You have full memory of this conversation.
+          - WAIT for the user to finish speaking. Do not interrupt.`,
           tools: [{
             functionDeclarations: [
               {
@@ -332,13 +346,21 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               
               // ECHO CANCELLATION: If agent is speaking or just finished, check if userText is just an echo
               const now = Date.now();
-              const isEcho = (isAgentSpeakingRef.current || (now - lastAgentSpeakTimeRef.current < 1500)) && 
+              const isAgentTalking = isAgentSpeakingRef.current || (now - lastAgentSpeakTimeRef.current < 2000);
+              
+              const isEcho = isAgentTalking && 
                             lastAgentMessageRef.current && 
                             (userText.toLowerCase().includes(lastAgentMessageRef.current.toLowerCase().substring(0, 10)) || 
                              lastAgentMessageRef.current.toLowerCase().includes(userText.toLowerCase()));
 
               if (isEcho) {
                 console.log("Filtered out echo:", userText);
+                return;
+              }
+
+              // If the agent is currently speaking, we ignore user input to prevent self-answering
+              if (isAgentSpeakingRef.current) {
+                console.log("Ignoring user input while agent is speaking:", userText);
                 return;
               }
 
@@ -465,9 +487,11 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
                     // Delay finishing to allow the agent to finish its final "Thank you" sentence
                     setTimeout(() => {
-                      setIsFinished(true);
-                      cleanup();
-                    }, 4000);
+                      if (isActiveRef.current) {
+                        setIsFinished(true);
+                        cleanup();
+                      }
+                    }, 6000);
                     
                     sessionPromise.then(session => {
                       session.sendToolResponse({
@@ -615,8 +639,28 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           {isConnecting ? (
             <Loader2 className="w-16 h-16 text-emerald-500 animate-spin" />
           ) : isActive ? (
-            <div className="relative">
-              <Bot className={`w-20 h-20 text-emerald-600 ${isAgentSpeaking ? 'animate-pulse' : ''}`} />
+            <div className="relative flex flex-col items-center">
+              <svg width="120" height="120" viewBox="0 0 120 120" className="text-emerald-600">
+                {/* Head */}
+                <circle cx="60" cy="60" r="50" fill="currentColor" fillOpacity="0.1" stroke="currentColor" strokeWidth="2" />
+                {/* Eyes */}
+                <circle cx="45" cy="50" r="4" fill="currentColor" />
+                <circle cx="75" cy="50" r="4" fill="currentColor" />
+                {/* Mouth (Option 1: SVG Morphing) */}
+                <motion.path
+                  d={isAgentSpeaking ? `M 40 80 Q 60 ${80 + agentVolume * 100} 80 80` : "M 45 80 Q 60 80 75 80"}
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  fill="none"
+                  animate={{
+                    d: isAgentSpeaking 
+                      ? `M 40 80 Q 60 ${80 + Math.max(5, agentVolume * 150)} 80 80` 
+                      : "M 45 80 Q 60 82 75 80"
+                  }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                />
+              </svg>
               {isUserSpeaking && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.5 }}
@@ -665,7 +709,15 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
       <div className="w-full space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Status</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Conversation</h3>
+            <button 
+              onClick={() => setShowDebug(!showDebug)}
+              className="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-500 px-2 py-0.5 rounded transition-colors"
+            >
+              {showDebug ? 'Hide Logs' : 'Show Logs'}
+            </button>
+          </div>
           <div className="flex items-center gap-3">
             {isActive && (
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
@@ -679,12 +731,15 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           </div>
         </div>
         
-        <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 min-h-[160px] max-h-[300px] overflow-y-auto space-y-4">
+        <div className={`p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all duration-300 ${showDebug ? 'min-h-[300px] max-h-[500px]' : 'min-h-[160px] max-h-[300px]'} overflow-y-auto space-y-4`}>
           {isActive ? (
             localTranscript.length > 0 ? (
               <div className="space-y-3">
                 {localTranscript.map((entry, idx) => (
-                  <div key={idx} className={`flex ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={idx} className={`flex flex-col ${entry.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <span className="text-[9px] text-gray-400 mb-1 px-2">
+                      {entry.role === 'user' ? respondentName : 'AI Agent'}
+                    </span>
                     <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
                       entry.role === 'user' 
                         ? 'bg-emerald-600 text-white rounded-tr-none' 
