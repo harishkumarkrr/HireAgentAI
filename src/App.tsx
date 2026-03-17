@@ -354,10 +354,7 @@ function AppContent() {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { 
-                voiceName: newForm.voice,
-                voice_name: newForm.voice
-              } as any,
+              prebuiltVoiceConfig: { voiceName: newForm.voice },
             },
           },
         },
