@@ -35,12 +35,21 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const answersRef = useRef<Record<string, string>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const lastAgentMessageRef = useRef<string>("");
+  const lastAgentSpeakTimeRef = useRef<number>(0);
+  const isAgentSpeakingRef = useRef(false);
+  const lastUserTextRef = useRef<string>("");
+  
   const isActiveRef = useRef(false);
   
   useEffect(() => {
     isActiveRef.current = isActive;
+    isAgentSpeakingRef.current = isAgentSpeaking;
+    if (isAgentSpeaking) {
+      lastAgentSpeakTimeRef.current = Date.now();
+    }
     console.log("VoiceAgent state - isActive:", isActive, "isConnecting:", isConnecting, "isFinished:", isFinished);
-  }, [isActive, isConnecting, isFinished]);
+  }, [isActive, isConnecting, isFinished, isAgentSpeaking]);
 
   useEffect(() => {
     if (isFinished) {
@@ -95,6 +104,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
     }
 
     setIsAgentSpeaking(true);
+    isAgentSpeakingRef.current = true;
+    lastAgentSpeakTimeRef.current = Date.now();
     
     // If we are falling behind, reset the play time
     if (nextPlayTimeRef.current < audioContextRef.current.currentTime) {
@@ -117,6 +128,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       source.onended = () => {
         if (audioContextRef.current && audioContextRef.current.currentTime >= nextPlayTimeRef.current - 0.1) {
           setIsAgentSpeaking(false);
+          isAgentSpeakingRef.current = false;
+          lastAgentSpeakTimeRef.current = Date.now();
         }
       };
     }
@@ -204,39 +217,28 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           systemInstruction: `You are a professional AI interviewer conducting "${form.title}".
           Respondent: ${respondentName}
           
-          Language: ${
-            {
-              'en-US': 'English (US)',
-              'en-IN': 'English (India)',
-              'hi-IN': 'Hindi',
-              'ta-IN': 'Tamil',
-              'te-IN': 'Telugu',
-              'kn-IN': 'Kannada',
-              'ml-IN': 'Malayalam',
-              'es-ES': 'Spanish',
-              'zh-CN': 'Chinese',
-              'ko-KR': 'Korean',
-              'ja-JP': 'Japanese'
-            }[form.language] || 'English'
-          }
+          Current Progress:
+          - Questions Answered: ${Object.keys(answersRef.current).length}
+          - Total Questions: ${form.questions.length}
           
-          Questions to ask:
-          ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
-
           Protocol:
-          1. Greet ${respondentName} and ask Question 1.
-          2. Wait for a clear answer. If unclear, ask for clarification.
-          3. Once answered, call 'save_answer' and IMMEDIATELY ask the NEXT question.
-          4. Continue until ALL ${form.questions.length} questions are answered.
-          5. After the LAST question is answered and saved, thank them and call 'finish_form'.
-
-          Rules:
-          - Ask ONLY ONE question at a time.
-          - NEVER skip questions.
-          - NEVER repeat questions already answered.
-          - If the user is silent, wait patiently.
-          - Do not hallucinate user input.
-          - Be concise and professional.`,
+          1. Greet the user and ask the first question.
+          2. LISTEN carefully. You might hear your own voice as an echo; YOU MUST IGNORE IT.
+          3. Only consider input as a "user answer" if it is NOT a repetition of your own question.
+          4. When you have a clear answer, call 'save_answer' with the question and the answer.
+          5. After saving, IMMEDIATELY ask the next question.
+          6. If you have asked all questions, thank the user and call 'finish_form'.
+          
+          Questions:
+          ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+          
+          CRITICAL RULES:
+          - Do NOT answer your own questions.
+          - Do NOT assume the user said something if you only heard yourself.
+          - If the user repeats your question, wait for them to provide an actual answer.
+          - Stay in character as a professional interviewer.
+          - If the user provides a very short or vague answer, ask for more details before saving.
+          - You have full memory of the conversation history in this session.`,
           tools: [{
             functionDeclarations: [
               {
@@ -299,9 +301,13 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
             // Handle Transcriptions and save to DB
             const serverContent = message.serverContent as any;
+            
+            // 1. Handle Agent Transcription
             const agentText = serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
             if (agentText) {
               console.log("Agent Transcription:", agentText);
+              lastAgentMessageRef.current = agentText;
+              
               setLocalTranscript(prev => [...prev.slice(-4), { role: 'agent', text: agentText, timestamp: new Date().toISOString() }]);
               
               const newEntry: TranscriptEntry = {
@@ -317,9 +323,27 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               }
             }
 
+            // 2. Handle User Transcription
             const userText = serverContent?.userTurn?.parts?.find((p: any) => p.text)?.text;
             if (userText) {
-              console.log("User Transcription:", userText);
+              console.log("User Transcription (Raw):", userText);
+              
+              // ECHO CANCELLATION: If agent is speaking or just finished, check if userText is just an echo
+              const now = Date.now();
+              const isEcho = (isAgentSpeakingRef.current || (now - lastAgentSpeakTimeRef.current < 1500)) && 
+                            lastAgentMessageRef.current && 
+                            (userText.toLowerCase().includes(lastAgentMessageRef.current.toLowerCase().substring(0, 10)) || 
+                             lastAgentMessageRef.current.toLowerCase().includes(userText.toLowerCase()));
+
+              if (isEcho) {
+                console.log("Filtered out echo:", userText);
+                return;
+              }
+
+              // Avoid duplicate user transcriptions
+              if (userText === lastUserTextRef.current) return;
+              lastUserTextRef.current = userText;
+
               setLocalTranscript(prev => [...prev.slice(-4), { role: 'user', text: userText, timestamp: new Date().toISOString() }]);
               
               const newEntry: TranscriptEntry = {
@@ -484,13 +508,16 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           userVolumeRef.current = rms;
           
           // Threshold for "speaking" with a small debounce
-          const isLoud = rms > 0.01;
+          // If agent is speaking, we raise the threshold to avoid echo triggering the indicator
+          const threshold = isAgentSpeakingRef.current ? 0.08 : 0.01;
+          const isLoud = rms > threshold;
+          
           if (isLoud && !isUserSpeaking) {
             setIsUserSpeaking(true);
           } else if (!isLoud && isUserSpeaking) {
             // Wait a bit before setting to false to handle natural pauses
             setTimeout(() => {
-              if (userVolumeRef.current <= 0.01) {
+              if (userVolumeRef.current <= threshold) {
                 setIsUserSpeaking(false);
               }
             }, 500);
