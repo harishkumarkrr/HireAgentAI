@@ -18,6 +18,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [localTranscript, setLocalTranscript] = useState<TranscriptEntry[]>([]);
   const [currentQuestionNum, setCurrentQuestionNum] = useState(1);
@@ -29,6 +30,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const audioQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
   const nextPlayTimeRef = useRef(0);
+  const userVolumeRef = useRef(0);
 
   const isActiveRef = useRef(false);
   
@@ -139,7 +141,13 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       }
 
       console.log("Requesting microphone access...");
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
       
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
       // Reduced buffer size for lower latency (1024 samples @ 16kHz ~= 64ms)
@@ -196,6 +204,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
           Guidelines:
+          - You are a STATE MACHINE. 
+          - State 1: Greet and ask Question 1.
+          - State 2: Wait for Answer 1.
+          - State 3: Save Answer 1 and ask Question 2.
+          - ... and so on.
+          - NEVER skip a state. NEVER repeat a state that is finished.
           - Ask ONLY ONE question at a time and WAIT for the user to respond.
           - Keep track of which question number you are currently on (1 to ${form.questions.length}).
           - EACH question requires a fresh response from the user. NEVER reuse a previous answer for a new question.
@@ -209,7 +223,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.
           
           CRITICAL: If you just saved an answer for question X, you MUST explicitly ask question X+1 next and then STOP to listen. Do not assume you know the answer to the next question based on what was said before. Maintain a clear state of which questions are completed.
-          CRITICAL: NEVER ask the same question twice if you have already received and saved an answer for it. If you are unsure, check your internal state.`,
+          CRITICAL: NEVER ask the same question twice if you have already received and saved an answer for it. If you are unsure, check your internal state.
+          CRITICAL: If you hear your own voice (echo), ignore it. Wait for a clear user response.`,
           tools: [{
             functionDeclarations: [
               {
@@ -461,6 +476,28 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       processorRef.current.onaudioprocess = (e) => {
         if (isActiveRef.current && sessionRef.current) {
           const inputData = e.inputBuffer.getChannelData(0);
+          
+          // Simple volume detection
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sum / inputData.length);
+          userVolumeRef.current = rms;
+          
+          // Threshold for "speaking" with a small debounce
+          const isLoud = rms > 0.01;
+          if (isLoud && !isUserSpeaking) {
+            setIsUserSpeaking(true);
+          } else if (!isLoud && isUserSpeaking) {
+            // Wait a bit before setting to false to handle natural pauses
+            setTimeout(() => {
+              if (userVolumeRef.current <= 0.01) {
+                setIsUserSpeaking(false);
+              }
+            }, 500);
+          }
+
           const pcmData = float32ToInt16(inputData);
           const base64Data = base64EncodeAudio(pcmData);
           
@@ -548,7 +585,18 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           {isConnecting ? (
             <Loader2 className="w-16 h-16 text-emerald-500 animate-spin" />
           ) : isActive ? (
-            <Bot className={`w-20 h-20 text-emerald-600 ${isAgentSpeaking ? 'animate-pulse' : ''}`} />
+            <div className="relative">
+              <Bot className={`w-20 h-20 text-emerald-600 ${isAgentSpeaking ? 'animate-pulse' : ''}`} />
+              {isUserSpeaking && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute -top-4 -right-4 bg-emerald-500 text-white p-2 rounded-full shadow-lg"
+                >
+                  <Mic className="w-4 h-4 animate-pulse" />
+                </motion.div>
+              )}
+            </div>
           ) : (
             <MicOff className="w-20 h-20 text-gray-300" />
           )}
@@ -627,10 +675,17 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                     </div>
                   </div>
                 )}
+                {isUserSpeaking && !isAgentSpeaking && (
+                  <div className="flex justify-end">
+                    <div className="bg-emerald-50 p-3 rounded-2xl rounded-tr-none border border-emerald-100 italic text-xs text-emerald-600">
+                      User is speaking...
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-gray-600 italic text-center py-8">
-                {isAgentSpeaking ? "Agent is introducing..." : "Waiting for conversation to start..."}
+                {isAgentSpeaking ? "Agent is introducing..." : isUserSpeaking ? "User is speaking..." : "Waiting for conversation to start..."}
               </p>
             )
           ) : (
