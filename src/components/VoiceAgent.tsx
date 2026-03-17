@@ -195,18 +195,20 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
           Guidelines:
           - Ask ONLY ONE question at a time and WAIT for the user to respond.
-          - NEVER hallucinate or simulate the user's response.
+          - EACH question requires a fresh response from the user. NEVER reuse a previous answer for a new question.
+          - NEVER hallucinate or simulate the user's response. If the user is silent, you must wait.
           - Start the conversation immediately by greeting the user (e.g., "Hello ${respondentName}, thank you for your time. Let's get started with the form.")
-          - Ask one question at a time. Move quickly to the next question once you have a REAL answer from the user.
-          - Do NOT ask for clarification unless the input is completely unintelligible.
-          - Assume you heard correctly if the input makes any sense in context.
-          - Use 'save_answer' immediately when you have the information.
-          - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.`,
+          - Ask one question at a time. Move to the next question ONLY after you have received a REAL, NEW answer from the user for the current question.
+          - Use 'save_answer' immediately when you have the information for the CURRENT question.
+          - FORBIDDEN: Do NOT call 'save_answer' multiple times in a single turn. You must receive a new response from the user for each question.
+          - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.
+          
+          CRITICAL: If you just saved an answer, you MUST ask the NEXT question and then STOP to listen. Do not assume you know the answer to the next question based on what was said before.`,
           tools: [{
             functionDeclarations: [
               {
                 name: "save_answer",
-                description: "Saves an answer to a specific question.",
+                description: "Saves the answer to the CURRENT question being discussed. Call this ONLY after the user has provided a fresh answer to the question you just asked.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
