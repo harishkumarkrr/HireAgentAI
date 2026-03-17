@@ -13,6 +13,7 @@ import { auth } from './firebase';
 import { formService, responseService } from './services/formService';
 import { Form, FormResponse } from './types';
 import VoiceAgent from './components/VoiceAgent';
+import { Logo } from './components/Logo';
 import ErrorBoundary from './components/ErrorBoundary';
 import { 
   LogOut, 
@@ -551,8 +552,8 @@ function AppContent() {
       <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
-            <div className="bg-emerald-600 p-2 rounded-xl shadow-lg shadow-emerald-100">
-              <Bot className="w-6 h-6 text-white" />
+            <div className="bg-emerald-600 p-2 rounded-xl shadow-lg shadow-emerald-100 flex items-center justify-center min-w-[40px] min-h-[40px]">
+              <Logo className="w-6 h-6" iconClassName="w-6 h-6 text-white" />
             </div>
             <span className="text-xl font-bold tracking-tight">HireYour<span className="text-emerald-600">Agent</span></span>
           </div>
@@ -1900,7 +1901,7 @@ function AppContent() {
       <footer className="mt-20 border-t border-gray-200 py-12 px-6 bg-white">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2 grayscale opacity-50">
-            <Bot className="w-5 h-5" />
+            <Logo className="w-5 h-5" iconClassName="w-5 h-5 text-gray-900" />
             <span className="font-bold">HireYourAgent</span>
           </div>
           <p className="text-gray-400 text-sm">© 2026 HireYourAgent. All rights reserved.</p>
