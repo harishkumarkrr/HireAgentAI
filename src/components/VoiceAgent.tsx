@@ -19,6 +19,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const [error, setError] = useState<string | null>(null);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const [localTranscript, setLocalTranscript] = useState<TranscriptEntry[]>([]);
+  const [currentQuestionNum, setCurrentQuestionNum] = useState(1);
   
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -206,7 +208,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - FORBIDDEN: Do NOT call 'save_answer' multiple times in a single turn. You must receive a new response from the user for each question.
           - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.
           
-          CRITICAL: If you just saved an answer for question X, you MUST explicitly ask question X+1 next and then STOP to listen. Do not assume you know the answer to the next question based on what was said before. Maintain a clear state of which questions are completed.`,
+          CRITICAL: If you just saved an answer for question X, you MUST explicitly ask question X+1 next and then STOP to listen. Do not assume you know the answer to the next question based on what was said before. Maintain a clear state of which questions are completed.
+          CRITICAL: NEVER ask the same question twice if you have already received and saved an answer for it. If you are unsure, check your internal state.`,
           tools: [{
             functionDeclarations: [
               {
@@ -272,6 +275,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             const agentText = serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
             if (agentText) {
               console.log("Agent Transcription:", agentText);
+              setLocalTranscript(prev => [...prev.slice(-4), { role: 'agent', text: agentText, timestamp: new Date().toISOString() }]);
               try {
                 const currentResponse = await responseService.getResponse(responseId);
                 const transcript = currentResponse?.transcript || [];
@@ -294,6 +298,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             const userText = serverContent?.userTurn?.parts?.find((p: any) => p.text)?.text;
             if (userText) {
               console.log("User Transcription:", userText);
+              setLocalTranscript(prev => [...prev.slice(-4), { role: 'user', text: userText, timestamp: new Date().toISOString() }]);
               try {
                 const currentResponse = await responseService.getResponse(responseId);
                 const transcript = currentResponse?.transcript || [];
@@ -343,6 +348,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
                       answers: { ...currentAnswers, [question]: answer }
                     });
                     
+                    // Update current question index for UI
+                    const qIndex = form.questions.indexOf(question);
+                    if (qIndex !== -1) {
+                      setCurrentQuestionNum(Math.min(qIndex + 2, form.questions.length));
+                    }
+
                     sessionPromise.then(session => {
                       session.sendToolResponse({
                         functionResponses: [{
@@ -577,19 +588,53 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       <div className="w-full space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Status</h3>
-          <span className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-            {isActive ? 'Live' : 'Disconnected'}
-          </span>
+          <div className="flex items-center gap-3">
+            {isActive && (
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
+                Question {currentQuestionNum} of {form.questions.length}
+              </span>
+            )}
+            <span className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+              <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+              {isActive ? 'Live' : 'Disconnected'}
+            </span>
+          </div>
         </div>
         
-        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 min-h-[100px] max-h-[200px] overflow-y-auto">
+        <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 min-h-[160px] max-h-[300px] overflow-y-auto space-y-4">
           {isActive ? (
-            <p className="text-gray-600 italic text-center py-4">
-              {isAgentSpeaking ? "Agent is speaking..." : "Listening to you..."}
-            </p>
+            localTranscript.length > 0 ? (
+              <div className="space-y-3">
+                {localTranscript.map((entry, idx) => (
+                  <div key={idx} className={`flex ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
+                      entry.role === 'user' 
+                        ? 'bg-emerald-600 text-white rounded-tr-none' 
+                        : 'bg-white text-gray-900 border border-gray-200 rounded-tl-none shadow-sm'
+                    }`}>
+                      {entry.text}
+                    </div>
+                  </div>
+                ))}
+                {isAgentSpeaking && (
+                  <div className="flex justify-start">
+                    <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-gray-200 shadow-sm">
+                      <div className="flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-gray-600 italic text-center py-8">
+                {isAgentSpeaking ? "Agent is introducing..." : "Waiting for conversation to start..."}
+              </p>
+            )
           ) : (
-            <p className="text-gray-400 text-center py-4">Click start to begin the voice conversation.</p>
+            <p className="text-gray-400 text-center py-8">Click start to begin the voice conversation.</p>
           )}
         </div>
       </div>
