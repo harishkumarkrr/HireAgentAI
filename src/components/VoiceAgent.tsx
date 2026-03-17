@@ -23,6 +23,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const [localTranscript, setLocalTranscript] = useState<TranscriptEntry[]>([]);
   const [currentQuestionNum, setCurrentQuestionNum] = useState(1);
   const [agentState, setAgentState] = useState<'idle' | 'greeting' | 'asking' | 'listening' | 'saving' | 'finishing'>('idle');
+  const lastSavedIndexRef = useRef<number>(-1);
   
   const [agentVolume, setAgentVolume] = useState(0);
   const [showDebug, setShowDebug] = useState(false);
@@ -61,6 +62,15 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [localTranscript, isAgentSpeaking, isUserSpeaking]);
+
+  useEffect(() => {
+    if (isActive && sessionRef.current && agentState !== 'idle') {
+      console.log("Nudging AI with state change:", agentState);
+      sessionRef.current.sendRealtimeInput({
+        text: `SYSTEM: The conversation state has changed to [${agentState.toUpperCase()}]. Please act accordingly.`
+      });
+    }
+  }, [agentState, isActive]);
 
   useEffect(() => {
     if (isFinished) {
@@ -151,6 +161,9 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           isAgentSpeakingRef.current = false;
           lastAgentSpeakTimeRef.current = Date.now();
           setAgentVolume(0);
+          
+          // After asking, move to listening state
+          setAgentState(prev => prev === 'asking' || prev === 'greeting' ? 'listening' : prev);
         }
       };
     }
@@ -242,41 +255,32 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           systemInstruction: `You are a friendly and casual AI assistant conducting a chat for "${form.title}".
           Respondent: ${respondentName}
           
-          Current Conversation State: ${agentState}
-          Current Question Index: ${currentQuestionNum - 1}
-          Questions Answered: ${Object.keys(answersRef.current).length} / ${form.questions.length}
+          CONVERSATION GRAPH:
+          - [GREETING] -> Welcome the user, then move to [ASKING] question 1.
+          - [ASKING] -> Ask the question. Once asked, move to [LISTENING].
+          - [LISTENING] -> Wait for user input. IGNORE your own voice. If you get a clear answer, move to [SAVING].
+          - [SAVING] -> Call 'save_answer'. Once confirmed, move to [ASKING] the next question or [FINISHING].
+          - [FINISHING] -> Say goodbye and call 'finish_form'.
           
-          Workflow Logic (LangGraph-style):
-          1. [GREETING] -> Greet the user casually and ask the first question.
-          2. [ASKING] -> Ask the current question clearly.
-          3. [LISTENING] -> Wait for the user to answer. Do NOT interrupt.
-          4. [SAVING] -> Once an answer is received, call 'save_answer' and acknowledge it.
-          5. [FINISHING] -> After all questions, say a warm goodbye and call 'finish_form'.
+          Current State: ${agentState}
+          Current Question Index: ${currentQuestionNum - 1}
           
           Tone & Style:
           - Talk naturally and casually, like a friend. 
           - Use phrases like "Got it!", "Cool," "That makes sense," or "Awesome."
-          - Don't be too formal or robotic.
           
           Protocol:
-          - Be snappy and responsive. Don't leave long silences.
-          - LISTEN carefully. Ignore any echoes of your own voice.
-          - When you get an answer, call 'save_answer' and then move to the next thing immediately.
-          - IMPORTANT: NEVER ask the same question twice.
-          - If the user is vague, just ask "Could you tell me a bit more about that?" in a friendly way.
-          - You have full memory of this conversation.
+          - NEVER ask the same question twice.
+          - NEVER answer your own questions.
+          - If you hear yourself (echo), ignore it.
           - Respond as soon as the user finishes their thought.
           
-          Questions to ask:
+          Questions:
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
           
           CRITICAL RULES:
-          - Do NOT answer your own questions.
-          - Do NOT repeat questions that are already answered.
-          - If you hear yourself (echo), ignore it completely.
-          - NEVER produce humming, filler sounds (like "um", "ah", "aah"), or long continuous tones.
-          - When you are done speaking, STOP the audio stream immediately.
-          - If the user is silent, wait patiently without making any noise.`,
+          - If a question is already answered (index < ${currentQuestionNum}), do NOT ask it again.
+          - Stay in the [LISTENING] state until the user provides a fresh answer.`,
           tools: [{
             functionDeclarations: [
               {
@@ -416,9 +420,26 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               for (const fc of toolCall.functionCalls) {
                 console.log("Function call received:", fc.name, fc.args);
                 if (fc.name === 'save_answer') {
+                  const { question, answer } = fc.args as any;
+                  const qIndex = form.questions.indexOf(question);
+                  
+                  // Prevent saving the same question twice or out of order
+                  if (qIndex <= lastSavedIndexRef.current) {
+                    console.log("Ignoring duplicate save_answer for index:", qIndex);
+                    sessionPromise.then(session => {
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          id: fc.id,
+                          response: { success: true, note: "Already saved." }
+                        }]
+                      });
+                    });
+                    continue;
+                  }
+
                   setAgentState('saving');
                   try {
-                    const { question, answer } = fc.args as any;
                     
                     if (!answer || answer.trim().length < 1) {
                       sessionPromise.then(session => {
@@ -435,11 +456,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
                     // Update local cache and Firestore optimistically
                     answersRef.current[question] = answer;
+                    lastSavedIndexRef.current = qIndex;
+                    
                     responseService.updateResponse(responseId, {
                       answers: { ...answersRef.current }
                     }).catch(err => console.error("Background answer save failed:", err));
                     
-                    const qIndex = form.questions.indexOf(question);
                     if (qIndex !== -1) {
                       setCurrentQuestionNum(Math.min(qIndex + 2, form.questions.length));
                       setAgentState('asking');
