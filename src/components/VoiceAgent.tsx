@@ -152,9 +152,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       const sessionPromise = ai.live.connect({
         model: import.meta.env.VITE_VOICE_MODEL || "gemini-2.5-flash-native-audio-preview-09-2025",
         config: {
-          responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: form.voice || "Zephyr" } },
+          },
+          generationConfig: {
+            temperature: 0.7,
+            responseModalities: [Modality.AUDIO],
           },
           systemInstruction: `You are a helpful AI agent conducting a conversational form titled "${form.title}".
           Description: ${form.description}
