@@ -192,7 +192,10 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       const ai = new GoogleGenAI({ apiKey });
       
       // Use 16000Hz for input as recommended, but we'll handle 24000Hz for output playback
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
+        sampleRate: 16000,
+        latencyHint: 'interactive'
+      });
       
       if (audioContextRef.current.state === 'suspended') {
         await audioContextRef.current.resume();
@@ -208,8 +211,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
       });
       
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      // Reduced buffer size for lower latency (1024 samples @ 16kHz ~= 64ms)
-      processorRef.current = audioContextRef.current.createScriptProcessor(1024, 1, 1);
+      // Reduced buffer size for lower latency (512 samples @ 16kHz ~= 32ms)
+      processorRef.current = audioContextRef.current.createScriptProcessor(512, 1, 1);
       
       // Ensure context is running
       if (audioContextRef.current.state === 'suspended') {
@@ -232,7 +235,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
           },
-          temperature: 0.5, // Lower temperature for more focused responses
+          temperature: 0.2, // Lower temperature for faster, more deterministic responses
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
@@ -256,11 +259,13 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - Don't be too formal or robotic.
           
           Protocol:
+          - Be snappy and responsive. Don't leave long silences.
           - LISTEN carefully. Ignore any echoes of your own voice.
-          - IMPORTANT: NEVER ask the same question twice. If you've already asked it and got an answer, move on.
+          - When you get an answer, call 'save_answer' and then move to the next thing immediately.
+          - IMPORTANT: NEVER ask the same question twice.
           - If the user is vague, just ask "Could you tell me a bit more about that?" in a friendly way.
           - You have full memory of this conversation.
-          - WAIT for the user to finish speaking. Do not interrupt.
+          - Respond as soon as the user finishes their thought.
           
           Questions to ask:
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
