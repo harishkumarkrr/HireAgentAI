@@ -26,6 +26,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const audioQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
+  const nextPlayTimeRef = useRef(0);
 
   const isActiveRef = useRef(false);
   
@@ -66,27 +67,35 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
   }, []);
 
   const playNextInQueue = useCallback(() => {
-    if (!audioContextRef.current || audioQueueRef.current.length === 0 || isPlayingRef.current) {
+    if (!audioContextRef.current || audioQueueRef.current.length === 0) {
       return;
     }
 
-    isPlayingRef.current = true;
     setIsAgentSpeaking(true);
-    const chunk = audioQueueRef.current.shift()!;
-    const buffer = audioContextRef.current.createBuffer(1, chunk.length, 16000);
-    buffer.getChannelData(0).set(chunk);
+    
+    // If we are falling behind, reset the play time
+    if (nextPlayTimeRef.current < audioContextRef.current.currentTime) {
+      nextPlayTimeRef.current = audioContextRef.current.currentTime + 0.05; // small buffer
+    }
 
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
-    source.onended = () => {
-      isPlayingRef.current = false;
-      if (audioQueueRef.current.length === 0) {
-        setIsAgentSpeaking(false);
-      }
-      playNextInQueue();
-    };
-    source.start();
+    while (audioQueueRef.current.length > 0) {
+      const chunk = audioQueueRef.current.shift()!;
+      const buffer = audioContextRef.current.createBuffer(1, chunk.length, 16000);
+      buffer.getChannelData(0).set(chunk);
+
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContextRef.current.destination);
+      
+      source.start(nextPlayTimeRef.current);
+      nextPlayTimeRef.current += buffer.duration;
+      
+      source.onended = () => {
+        if (audioContextRef.current && audioContextRef.current.currentTime >= nextPlayTimeRef.current - 0.1) {
+          setIsAgentSpeaking(false);
+        }
+      };
+    }
   }, []);
 
   const startSession = async () => {
@@ -172,12 +181,12 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
           Guidelines:
           - This is a REAL-TIME conversation. Be extremely proactive and snappy.
-          - Start the conversation immediately. Do not wait for the user to speak first.
+          - Start the conversation immediately by greeting the user (e.g., "Hello ${respondentName}, thank you for your time. Let's get started with the form.")
           - Ask one question at a time. Move quickly to the next question once you have an answer.
           - Do NOT ask for clarification unless the input is completely unintelligible.
           - Assume you heard correctly if the input makes any sense in context.
           - Use 'save_answer' immediately when you have the information.
-          - Once all questions are answered, thank the user and use 'finish_form' immediately.`,
+          - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.`,
           tools: [{
             functionDeclarations: [
               {
@@ -232,7 +241,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
             if (message.serverContent?.interrupted) {
               console.log("Session interrupted");
               audioQueueRef.current = [];
-              isPlayingRef.current = false;
+              nextPlayTimeRef.current = 0;
               setIsAgentSpeaking(false);
             }
             
