@@ -166,6 +166,8 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           },
           temperature: 0.7,
           responseModalities: [Modality.AUDIO],
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
           systemInstruction: `You are a helpful AI agent conducting a conversational form titled "${form.title}".
           Description: ${form.description}
           Respondent Name: ${respondentName}
@@ -192,9 +194,10 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           ${form.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
           Guidelines:
-          - This is a REAL-TIME conversation. Be extremely proactive and snappy.
+          - Ask ONLY ONE question at a time and WAIT for the user to respond.
+          - NEVER hallucinate or simulate the user's response.
           - Start the conversation immediately by greeting the user (e.g., "Hello ${respondentName}, thank you for your time. Let's get started with the form.")
-          - Ask one question at a time. Move quickly to the next question once you have an answer.
+          - Ask one question at a time. Move quickly to the next question once you have a REAL answer from the user.
           - Do NOT ask for clarification unless the input is completely unintelligible.
           - Assume you heard correctly if the input makes any sense in context.
           - Use 'save_answer' immediately when you have the information.
@@ -233,19 +236,21 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               sessionRef.current = session; // Store session for faster access
               console.log("Sending start trigger...");
               session.sendRealtimeInput({
-                text: "Please start the form now."
+                text: "Please start the form now. Greet the user and ask the first question."
               });
             });
           },
           onmessage: async (message: LiveServerMessage) => {
             if (message.serverContent?.modelTurn?.parts) {
-              console.log("Received audio parts from agent");
               for (const part of message.serverContent.modelTurn.parts) {
                 if (part.inlineData) {
                   const audioData = base64DecodeAudio(part.inlineData.data);
                   const floatData = int16ToFloat32(audioData);
                   audioQueueRef.current.push(floatData);
                   playNextInQueue();
+                }
+                if (part.text) {
+                  console.log("Agent Text Part:", part.text);
                 }
               }
             }
@@ -255,6 +260,21 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               audioQueueRef.current = [];
               nextPlayTimeRef.current = 0;
               setIsAgentSpeaking(false);
+            }
+
+            // Handle Transcriptions
+            if (message.serverContent?.modelTurn?.parts) {
+              // Already handled above
+            }
+            
+            const transcription = (message as any).serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
+            if (transcription) {
+              console.log("Agent Transcription:", transcription);
+            }
+
+            const userTranscription = (message as any).serverContent?.userTurn?.parts?.find((p: any) => p.text)?.text;
+            if (userTranscription) {
+              console.log("User Transcription:", userTranscription);
             }
             
             const toolCall = message.toolCall;
