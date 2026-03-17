@@ -136,6 +136,7 @@ function AppContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Profile State
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [totalResponses, setTotalResponses] = useState(0);
 
   useEffect(() => {
@@ -567,8 +568,11 @@ function AppContent() {
                 >
                   My Agents
                 </button>
-                <div className="relative group">
-                  <div className="flex items-center gap-3 pl-4 border-l border-gray-200 cursor-pointer">
+                <div className="relative">
+                  <div 
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="flex items-center gap-3 pl-4 border-l border-gray-200 cursor-pointer"
+                  >
                     <img 
                       src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email || 'User')}&background=10b981&color=fff`} 
                       alt="" 
@@ -579,26 +583,41 @@ function AppContent() {
                       <p className="text-xs text-gray-500 max-w-[120px] truncate">{user.email}</p>
                     </div>
                   </div>
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                    <div className="p-4 border-b border-gray-50 md:hidden">
-                      <p className="font-bold text-gray-900 truncate">{user.displayName || 'User'}</p>
-                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                    </div>
-                    <button 
-                      onClick={() => setView('profile')} 
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-2 transition-colors"
-                    >
-                      <UserIcon className="w-4 h-4" />
-                      Profile
-                    </button>
-                    <button 
-                      onClick={() => signOut(auth)} 
-                      className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 rounded-b-xl transition-colors"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Sign Out
-                    </button>
-                  </div>
+                  
+                  {showProfileMenu && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setShowProfileMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 transition-all z-50 overflow-hidden">
+                        <div className="p-4 border-b border-gray-50 md:hidden">
+                          <p className="font-bold text-gray-900 truncate">{user.displayName || 'User'}</p>
+                          <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setView('profile');
+                            setShowProfileMenu(false);
+                          }} 
+                          className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-2 transition-colors"
+                        >
+                          <UserIcon className="w-4 h-4" />
+                          Profile
+                        </button>
+                        <button 
+                          onClick={() => {
+                            signOut(auth);
+                            setShowProfileMenu(false);
+                          }} 
+                          className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             ) : view !== 'respond' ? (
