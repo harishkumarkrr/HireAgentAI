@@ -195,6 +195,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
 
           Guidelines:
           - Ask ONLY ONE question at a time and WAIT for the user to respond.
+          - Keep track of which question number you are currently on (1 to ${form.questions.length}).
           - EACH question requires a fresh response from the user. NEVER reuse a previous answer for a new question.
           - NEVER hallucinate or simulate the user's response. If the user is silent, you must wait.
           - Start the conversation immediately by greeting the user (e.g., "Hello ${respondentName}, thank you for your time. Let's get started with the form.")
@@ -205,7 +206,7 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
           - FORBIDDEN: Do NOT call 'save_answer' multiple times in a single turn. You must receive a new response from the user for each question.
           - Once all questions are answered, you MUST thank the user for their time and explicitly say goodbye BEFORE using 'finish_form'.
           
-          CRITICAL: If you just saved an answer, you MUST ask the NEXT question and then STOP to listen. Do not assume you know the answer to the next question based on what was said before.`,
+          CRITICAL: If you just saved an answer for question X, you MUST explicitly ask question X+1 next and then STOP to listen. Do not assume you know the answer to the next question based on what was said before. Maintain a clear state of which questions are completed.`,
           tools: [{
             functionDeclarations: [
               {
@@ -266,19 +267,49 @@ export default function VoiceAgent({ form, responseId, respondentName, onComplet
               setIsAgentSpeaking(false);
             }
 
-            // Handle Transcriptions
-            if (message.serverContent?.modelTurn?.parts) {
-              // Already handled above
-            }
-            
-            const transcription = (message as any).serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
-            if (transcription) {
-              console.log("Agent Transcription:", transcription);
+            // Handle Transcriptions and save to DB
+            const serverContent = message.serverContent as any;
+            const agentText = serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
+            if (agentText) {
+              console.log("Agent Transcription:", agentText);
+              try {
+                const currentResponse = await responseService.getResponse(responseId);
+                const transcript = currentResponse?.transcript || [];
+                // Avoid duplicate entries if the same text is sent multiple times in chunks (though transcriptions usually come once)
+                const lastEntry = transcript[transcript.length - 1];
+                if (!lastEntry || lastEntry.text !== agentText || lastEntry.role !== 'agent') {
+                  await responseService.updateResponse(responseId, {
+                    transcript: [...transcript, {
+                      role: 'agent',
+                      text: agentText,
+                      timestamp: new Date().toISOString()
+                    }]
+                  });
+                }
+              } catch (err) {
+                console.error("Error saving agent transcript:", err);
+              }
             }
 
-            const userTranscription = (message as any).serverContent?.userTurn?.parts?.find((p: any) => p.text)?.text;
-            if (userTranscription) {
-              console.log("User Transcription:", userTranscription);
+            const userText = serverContent?.userTurn?.parts?.find((p: any) => p.text)?.text;
+            if (userText) {
+              console.log("User Transcription:", userText);
+              try {
+                const currentResponse = await responseService.getResponse(responseId);
+                const transcript = currentResponse?.transcript || [];
+                const lastEntry = transcript[transcript.length - 1];
+                if (!lastEntry || lastEntry.text !== userText || lastEntry.role !== 'user') {
+                  await responseService.updateResponse(responseId, {
+                    transcript: [...transcript, {
+                      role: 'user',
+                      text: userText,
+                      timestamp: new Date().toISOString()
+                    }]
+                  });
+                }
+              } catch (err) {
+                console.error("Error saving user transcript:", err);
+              }
             }
             
             const toolCall = message.toolCall;

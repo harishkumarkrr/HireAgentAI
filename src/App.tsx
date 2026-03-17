@@ -1528,6 +1528,32 @@ function AppContent() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Transcript Section */}
+                  {selectedResponse.transcript && selectedResponse.transcript.length > 0 && (
+                    <div className="space-y-6 pt-8 border-t border-gray-100">
+                      <h3 className="text-xl font-bold flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-emerald-600" />
+                        Conversation Transcript
+                      </h3>
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                        {selectedResponse.transcript.map((entry, idx) => (
+                          <div key={idx} className={`flex ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[80%] p-4 rounded-2xl ${
+                              entry.role === 'user' 
+                                ? 'bg-emerald-600 text-white rounded-tr-none' 
+                                : 'bg-white text-gray-900 border border-gray-200 rounded-tl-none'
+                            }`}>
+                              <p className="text-sm leading-relaxed">{entry.text}</p>
+                              <p className={`text-[10px] mt-1 opacity-50 ${entry.role === 'user' ? 'text-white' : 'text-gray-400'}`}>
+                                {new Date(entry.timestamp).toLocaleTimeString()}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
